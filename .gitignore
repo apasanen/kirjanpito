@@ -8,6 +8,7 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+data/
 
 # Receipts (local files)
 receipts/
@@ -18,3 +19,11 @@ receipts/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test/Debug output
+output.txt
+pytest_*.txt
+pytest_*.log
+test_results.log
+
+tmp/

@@ -3,7 +3,40 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2><i class="bi bi-building me-2"></i>Kustannuspaikat</h2>
-  <small class="text-muted">Muokkaa <code>cost_centers.yaml</code> ja käynnistä sovellus uudelleen lisätäksesi tai muuttaaksesi kustannuspaikkoja.</small>
+</div>
+
+{# Add new #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Lisää uusi kustannuspaikka</div>
+  <div class="card-body">
+    <form method="post" action="/cost-centers/new" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Nimi <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" required maxlength="100" placeholder="esim. Asunto Oy Kotikatu">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold">Tyyppi</label>
+        <select name="type" class="form-select">
+          <option value="apartment">Asunto</option>
+          <option value="forest">Metsä</option>
+          <option value="other">Muu</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Kuvaus</label>
+        <input type="text" name="description" class="form-control" maxlength="200" placeholder="Vapaaehtoinen kuvaus">
+      </div>
+      <div class="col-md-2">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="vat_deductible" value="1" id="new_vat">
+          <label class="form-check-label small" for="new_vat">ALV-vähennyskelpoinen</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Lisää</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div class="card shadow-sm">
@@ -11,12 +44,13 @@
     <table class="table table-hover mb-0 align-middle">
       <thead class="table-dark">
         <tr>
-          <th>ID</th>
-          <th>Nimi</th>
-          <th>Tyyppi</th>
-          <th>ALV-vähennyskelpoinen</th>
-          <th>Kuvaus</th>
-          <th>Tila</th>
+          <th data-sort="num">ID</th>
+          <th data-sort="str">Nimi</th>
+          <th data-sort="str">Tyyppi</th>
+          <th data-sort="str">ALV-väh.</th>
+          <th data-sort="str">Kuvaus</th>
+          <th data-sort="str">Tila</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -25,29 +59,33 @@
           <td>{{ c.id }}</td>
           <td><strong>{{ c.name }}</strong></td>
           <td>
-            {% if c.type == "apartment" %}
-              <span class="badge badge-apartment">Asunto</span>
-            {% elif c.type == "forest" %}
-              <span class="badge badge-forest">Metsä</span>
-            {% else %}
-              <span class="badge badge-other">Muu</span>
-            {% endif %}
+            {% if c.type == "apartment" %}<span class="badge badge-apartment">Asunto</span>
+            {% elif c.type == "forest" %}<span class="badge badge-forest">Metsä</span>
+            {% else %}<span class="badge badge-other">Muu</span>{% endif %}
           </td>
           <td>
-            {% if c.vat_deductible %}
-              <span class="badge bg-success">Kyllä</span>
-            {% else %}
-              <span class="badge bg-secondary">Ei</span>
-            {% endif %}
+            {% if c.vat_deductible %}<span class="badge bg-success">Kyllä</span>
+            {% else %}<span class="badge bg-secondary">Ei</span>{% endif %}
           </td>
           <td>{{ c.description or "–" }}</td>
           <td>
             {% if c.active %}<span class="badge bg-success">Aktiivinen</span>
             {% else %}<span class="badge bg-secondary">Arkistoitu</span>{% endif %}
           </td>
+          <td class="text-end">
+            <a href="/cost-centers/{{ c.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Muokkaa">
+              <i class="bi bi-pencil"></i>
+            </a>
+            {% if not c.active %}
+            <form method="post" action="/cost-centers/{{ c.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Poistetaanko {{ c.name }} pysyvästi?')">
+              <button class="btn btn-sm btn-outline-danger" title="Poista"><i class="bi bi-trash"></i></button>
+            </form>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Ei kustannuspaikkoja. Lisää ne <code>cost_centers.yaml</code>-tiedostoon.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Ei kustannuspaikkoja.</td></tr>
         {% endfor %}
       </tbody>
     </table>

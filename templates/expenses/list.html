@@ -1,9 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Kulut{% endblock %}
+{% block title %}Tapahtumat{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2><i class="bi bi-list-ul me-2"></i>Kulut</h2>
-  <a href="/expenses/new" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Uusi kulu</a>
+  <h2><i class="bi bi-list-ul me-2"></i>Tapahtumat</h2>
+  <div class="d-flex gap-2">
+    <a href="/expenses/new?type=expense" class="btn btn-danger"><i class="bi bi-plus-circle me-1"></i>Uusi kulu</a>
+    <a href="/expenses/new?type=income" class="btn btn-success"><i class="bi bi-plus-circle me-1"></i>Uusi tulo</a>
+  </div>
 </div>
 
 {# Filters #}
@@ -24,6 +27,13 @@
       {% endfor %}
     </select>
   </div>
+  <div class="col-md-2">
+    <select name="entry_type" class="form-select" onchange="this.form.submit()">
+      <option value="">Kaikki tapahtumat</option>
+      <option value="expense" {% if selected_type == "expense" %}selected{% endif %}>Vain kulut</option>
+      <option value="income" {% if selected_type == "income" %}selected{% endif %}>Vain tulot</option>
+    </select>
+  </div>
   <div class="col-auto">
     <a href="/expenses/" class="btn btn-outline-secondary">Tyhjennä</a>
   </div>
@@ -34,33 +44,48 @@
     <table class="table table-hover mb-0 align-middle">
       <thead class="table-dark">
         <tr>
-          <th>Päivä</th>
-          <th>Kuvaus</th>
-          <th>Kustannuspaikka</th>
-          <th>Kategoria</th>
-          <th class="text-end">ALV %</th>
-          <th class="text-end">Netto €</th>
-          <th class="text-end">ALV €</th>
-          <th class="text-end">Brutto €</th>
+          <th data-sort="str">Tunnus</th>
+          <th data-sort="str">Päivä</th>
+          <th data-sort="str">Tyyppi</th>
+          <th data-sort="str">Kuvaus</th>
+          <th data-sort="str">Kustannuspaikka</th>
+          <th data-sort="str">Kategoriat</th>
+          <th class="text-end" data-sort="num">Netto €</th>
+          <th class="text-end" data-sort="num">ALV €</th>
+          <th class="text-end" data-sort="num">Brutto €</th>
           <th>Kuitti</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
+        {% set ns = namespace(cur_month="") %}
         {% for exp in expenses %}
+        {% set month_key = exp.date.strftime("%Y-%m") %}
+        {% if month_key != ns.cur_month %}
+          {% set ns.cur_month = month_key %}
+          <tr class="table-secondary month-separator">
+            <td colspan="11" class="fw-semibold small text-uppercase text-muted py-1 ps-2">
+              {{ exp.date.strftime("%B %Y") }}
+            </td>
+          </tr>
+        {% endif %}
         <tr>
+          <td><span class="badge bg-dark font-monospace">{{ exp.reference or "–" }}</span></td>
           <td>{{ exp.date.strftime("%d.%m.%Y") }}</td>
-          <td>{{ exp.description }}</td>
+          <td>
+            {% if exp.entry_type == "income" %}<span class="badge bg-success">Tulo</span>
+            {% else %}<span class="badge bg-danger">Kulu</span>{% endif %}
+          </td>
+          <td>{{ exp.description or "" }}</td>
           <td><small>{{ exp.cost_center.name }}</small></td>
-          <td><small>{{ exp.category.name if exp.category else "–" }}</small></td>
-          <td class="text-end">{{ exp.vat_rate|string|replace(".", ",") }} %</td>
-          <td class="text-end">{{ "%.2f"|format(exp.net_amount|float)|replace(".", ",") }}</td>
-          <td class="text-end">{{ "%.2f"|format(exp.vat_amount|float)|replace(".", ",") }}</td>
-          <td class="text-end fw-bold">{{ "%.2f"|format(exp.gross_amount|float)|replace(".", ",") }}</td>
+          <td><small>{{ exp.category_names | join(", ") or "–" }}</small></td>
+          <td class="text-end">{{ "%.2f"|format(exp.total_net|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(exp.total_vat|float)|replace(".", ",") }}</td>
+          <td class="text-end fw-bold">{{ "%.2f"|format(exp.total_gross|float)|replace(".", ",") }}</td>
           <td>
             {% if exp.receipt_image_path %}
               {% set ext = exp.receipt_image_path.rsplit(".", 1)[-1].lower() %}
-              {% if ext in ["jpg", "jpeg", "png", "webp"] %}
+              {% if ext in ["jpg","jpeg","png","webp"] %}
                 <a href="/receipts/{{ exp.receipt_image_path }}" target="_blank">
                   <img src="/receipts/{{ exp.receipt_image_path }}" class="receipt-thumb" alt="kuitti">
                 </a>
@@ -69,29 +94,29 @@
                   <i class="bi bi-file-earmark-pdf"></i>
                 </a>
               {% endif %}
-            {% else %}
-              <span class="text-muted">–</span>
-            {% endif %}
+            {% else %}<span class="text-muted">–</span>{% endif %}
           </td>
-          <td>
-            <a href="/expenses/{{ exp.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+          <td style="white-space: nowrap;">
+            <a href="/expenses/{{ exp.id }}/view" class="btn btn-sm btn-outline-info" title="Näytä"><i class="bi bi-eye"></i></a>
+            <a href="/expenses/{{ exp.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Muokkaa"><i class="bi bi-pencil"></i></a>
+            <a href="/expenses/new?copy_from={{ exp.id }}" class="btn btn-sm btn-outline-primary" title="Kopioi"><i class="bi bi-copy"></i></a>
             <form method="post" action="/expenses/{{ exp.id }}/delete" class="d-inline"
-                  onsubmit="return confirm('Poistetaanko kulu?')">
-              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  onsubmit="return confirm('Poistetaanko?')">
+              <button class="btn btn-sm btn-outline-danger" title="Poista"><i class="bi bi-trash"></i></button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="10" class="text-center text-muted py-4">Ei kuluja valituilla suodattimilla.</td></tr>
+        <tr><td colspan="11" class="text-center text-muted py-4">Ei tapahtumia valituilla suodattimilla.</td></tr>
         {% endfor %}
       </tbody>
       {% if expenses %}
       <tfoot class="table-light fw-bold">
         <tr>
-          <td colspan="5" class="text-end">Yhteensä:</td>
-          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="net_amount")|float)|replace(".", ",") }}</td>
-          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="vat_amount")|float)|replace(".", ",") }}</td>
-          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="gross_amount")|float)|replace(".", ",") }}</td>
+          <td colspan="6" class="text-end">Yhteensä:</td>
+          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_net")|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_vat")|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_gross")|float)|replace(".", ",") }}</td>
           <td colspan="2"></td>
         </tr>
       </tfoot>

@@ -1,131 +1,177 @@
-{% extends "base.html" %}
-{% block title %}{{ "Muokkaa kulua" if expense else "Uusi kulu" }}{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}{% if read_only and expense %}{{ "Näytä tuloa" if expense.entry_type == "income" else "Näytä kulua" }}{% elif expense %}{{ "Muokkaa tuloa" if expense.entry_type == "income" else "Muokkaa kulua" }}{% elif preset_type == "income" %}Uusi tulo{% else %}Uusi kulu{% endif %}{% endblock %}
 {% block content %}
+{% set etype = expense.entry_type if expense else preset_type %}
 <div class="row justify-content-center">
-  <div class="col-lg-7">
+  <div class="col-xl-10">
     <h2 class="mb-4">
-      <i class="bi bi-{{ 'pencil' if expense else 'plus-circle' }} me-2"></i>
-      {{ "Muokkaa kulua" if expense else "Uusi kulu" }}
+      <i class="bi bi-{{ 'eye' if read_only else ('pencil' if expense else 'plus-circle') }} me-2"></i>
+      {% if read_only and expense %}Näytä {{ "tuloa" if expense.entry_type == "income" else "kulua" }}
+      {% elif expense %}Muokkaa {{ "tuloa" if expense.entry_type == "income" else "kulua" }}
+      {% elif preset_type == "income" %}Uusi tulo
+      {% else %}Uusi kulu{% endif %}
     </h2>
 
-    <form method="post"
+    <form method="{% if read_only %}get{% else %}post{% endif %}"
           action="{{ '/expenses/' ~ expense.id ~ '/edit' if expense else '/expenses/new' }}"
           enctype="multipart/form-data"
-          class="card shadow-sm p-4">
+          class="card shadow-sm p-4"
+          {% if read_only %}onsubmit="return false;"{% endif %}>
 
-      <div class="row g-3">
+      <input type="hidden" name="entry_type" value="{{ etype }}">
 
-        {# Date #}
-        <div class="col-md-4">
+      {# Header row #}
+      <div class="row g-3 mb-3">
+        <div class="col-12 d-flex align-items-center gap-3">
+          {% if expense and expense.reference %}
+            <span class="badge bg-dark font-monospace fs-6">{{ expense.reference }}</span>
+          {% endif %}
+          {% if etype == "income" %}
+            <span class="badge bg-success fs-6"><i class="bi bi-arrow-down-circle me-1"></i>Tulo</span>
+          {% else %}
+            <span class="badge bg-danger fs-6"><i class="bi bi-arrow-up-circle me-1"></i>Kulu</span>
+          {% endif %}
+        </div>
+        <div class="col-md-3">
           <label class="form-label fw-semibold">Päivämäärä <span class="text-danger">*</span></label>
           <input type="date" name="expense_date" class="form-control" required
-                 value="{{ expense.date.isoformat() if expense else today }}">
+                 {% if read_only %}disabled{% endif %}
+                 value="{{ expense.date.isoformat() if expense else (prefill.date.isoformat() if prefill else today) }}">
         </div>
-
-        {# Cost center #}
-        <div class="col-md-8">
+        <div class="col-md-5">
           <label class="form-label fw-semibold">Kustannuspaikka <span class="text-danger">*</span></label>
-          <select name="cost_center_id" class="form-select" required>
+          <select name="cost_center_id" class="form-select" required {% if read_only %}disabled{% endif %}>
             {% for c in centers %}
             <option value="{{ c.id }}"
               {% if expense and expense.cost_center_id == c.id %}selected
-              {% elif not expense and loop.first %}selected{% endif %}>
+              {% elif prefill and prefill.cost_center_id == c.id %}selected
+              {% elif not expense and not prefill and loop.first %}selected{% endif %}>
               {{ c.name }}
             </option>
             {% endfor %}
           </select>
         </div>
-
-        {# Description #}
-        <div class="col-12">
-          <label class="form-label fw-semibold">Kuvaus <span class="text-danger">*</span></label>
-          <input type="text" name="description" class="form-control" required maxlength="255"
-                 placeholder="esim. Putkiremontti huoneisto 2"
-                 value="{{ expense.description if expense else '' }}">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Kuvaus (tosite)</label>
+          <input type="text" name="description" class="form-control" maxlength="255"
+                 {% if read_only %}disabled{% endif %}
+                 placeholder="esim. Helmikuun laskut"
+                 value="{{ expense.description if expense else (prefill.description if prefill else '') }}">
         </div>
+      </div>
 
-        {# Category #}
+      {# Lines table #}
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Rivit <span class="text-danger">*</span></label>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1" style="min-width:700px">
+            <thead class="table-light">
+              <tr>
+                <th style="width:22%">Kategoria</th>
+                <th style="width:28%">Kuvaus (rivi)</th>
+                <th style="width:14%">Brutto €</th>
+                <th style="width:13%">ALV %</th>
+                <th class="text-muted small" style="width:20%">Netto / ALV</th>
+                <th style="width:3%"></th>
+              </tr>
+            </thead>
+            <tbody id="lines-container">
+              {% for line in form_lines %}
+              <tr class="line-row">
+                <td>
+                  <select name="line_category_id" class="form-select form-select-sm" {% if read_only %}disabled{% endif %}>
+                    <option value="">– Ei –</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}"
+                      {% if line.category_id is not none and (line.category_id == cat.id or line.category_id == cat.id|string) %}selected{% endif %}>
+                      {{ cat.name }}
+                    </option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <input type="text" name="line_description" class="form-control form-control-sm"
+                         {% if read_only %}disabled{% endif %}
+                         maxlength="255" value="{{ line.description or '' }}">
+                </td>
+                <td>
+                  <input type="number" name="line_gross_amount" class="form-control form-control-sm line-gross"
+                         {% if read_only %}disabled{% endif %}
+                         step="0.01" min="0.01" required placeholder="0,00"
+                         value="{{ line.gross_amount }}">
+                </td>
+                <td>
+                  <input type="number" name="line_vat_rate" class="form-control form-control-sm line-vat-rate"
+                         {% if read_only %}disabled{% endif %}
+                         step="0.1" min="0" max="100" placeholder="0"
+                         value="{{ line.vat_rate }}">
+                  <div class="d-flex flex-wrap gap-1 mt-1">
+                    {% for rate in ["0", "10", "14", "25.5"] %}
+                    <button type="button" class="btn btn-outline-secondary vat-quick"
+                            style="padding:1px 6px;font-size:0.7rem" data-rate="{{ rate }}"
+                            {% if read_only %}disabled{% endif %}>{{ rate }}%</button>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td><small class="text-muted line-preview"></small></td>
+                <td>
+                  {% if not read_only %}
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-line-btn" title="Poista rivi">
+                    <i class="bi bi-dash-circle"></i>
+                  </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex align-items-center gap-3 mt-1">
+          {% if not read_only %}
+          <button type="button" id="add-line-btn" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-plus-circle me-1"></i>Lisää rivi
+          </button>
+          {% endif %}
+          <span id="lines-total" class="fw-semibold text-secondary"></span>
+        </div>
+      </div>
+
+      {# Notes & Receipt #}
+      <div class="row g-3 mt-1">
         <div class="col-md-6">
-          <label class="form-label fw-semibold">Kategoria</label>
-          <select name="category_id" class="form-select">
-            <option value="">– Ei kategoriaa –</option>
-            {% for cat in categories %}
-            <option value="{{ cat.id }}"
-              {% if expense and expense.category_id == cat.id %}selected{% endif %}>
-              {{ cat.name }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        {# Gross amount #}
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Brutto € <span class="text-danger">*</span></label>
-          <input type="number" id="gross_amount" name="gross_amount" class="form-control" required
-                 step="0.01" min="0" placeholder="0,00"
-                 value="{{ expense.gross_amount if expense else '' }}">
-        </div>
-
-        {# VAT rate #}
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">ALV %</label>
-          <input type="number" id="vat_rate" name="vat_rate" class="form-control"
-                 step="0.1" min="0" max="100" placeholder="25.5"
-                 value="{{ expense.vat_rate if expense else '25.5' }}">
-          <div class="mt-1">
-            {% for rate in ["0", "10", "14", "25.5"] %}
-            <button type="button" class="btn btn-sm btn-outline-secondary me-1 vat-quick"
-                    data-rate="{{ rate }}">{{ rate }} %</button>
-            {% endfor %}
-          </div>
-        </div>
-
-        {# Calculated display #}
-        <div class="col-12">
-          <div class="alert alert-info py-2 px-3 mb-0" id="vat-preview">
-            <span id="vat-preview-text">Syötä bruttosumma ja ALV-% laskentaa varten.</span>
-          </div>
-        </div>
-
-        {# Notes #}
-        <div class="col-12">
           <label class="form-label fw-semibold">Muistiinpanot</label>
-          <textarea name="notes" class="form-control" rows="2"
-                    placeholder="Vapaaehtoinen lisätieto">{{ expense.notes if expense else '' }}</textarea>
+          <textarea name="notes" class="form-control" rows="2"                    {% if read_only %}disabled{% endif %}                    placeholder="Vapaaehtoinen lisÃ¤tieto">{{ expense.notes if expense else (prefill.notes if prefill else '') }}</textarea>
         </div>
-
-        {# Receipt image #}
-        <div class="col-12">
+        <div class="col-md-6">
           <label class="form-label fw-semibold">Kuitin kuva</label>
           {% if expense and expense.receipt_image_path %}
             <div class="mb-2">
               {% set ext = expense.receipt_image_path.rsplit(".", 1)[-1].lower() %}
-              {% if ext in ["jpg", "jpeg", "png", "webp"] %}
+              {% if ext in ["jpg","jpeg","png","webp"] %}
                 <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank">
-                  <img src="/receipts/{{ expense.receipt_image_path }}"
-                       style="max-height:120px;border-radius:6px;" alt="nykyinen kuitti">
+                  <img src="/receipts/{{ expense.receipt_image_path }}" style="max-height:80px;border-radius:4px" alt="kuitti">
                 </a>
               {% else %}
                 <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                  <i class="bi bi-file-earmark-pdf me-1"></i>Avaa nykyinen kuitti
+                  <i class="bi bi-file-earmark-pdf me-1"></i>Nykyinen kuitti
                 </a>
               {% endif %}
-              <small class="text-muted ms-2">Lataa uusi tiedosto korvataksesi.</small>
+              {% if not read_only %}<small class="text-muted ms-2">Lataa uusi korvataksesi.</small>{% endif %}
             </div>
           {% endif %}
-          <input type="file" name="receipt" class="form-control"
-                 accept=".jpg,.jpeg,.png,.pdf,.webp">
+          {% if not read_only %}<input type="file" name="receipt" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.webp">{% endif %}
         </div>
-
-        {# Submit #}
-        <div class="col-12 d-flex gap-2 justify-content-end">
-          <a href="/expenses/" class="btn btn-outline-secondary">Peruuta</a>
-          <button type="submit" class="btn btn-primary">
-            <i class="bi bi-check-lg me-1"></i>{{ "Tallenna muutokset" if expense else "Lisää kulu" }}
-          </button>
-        </div>
-
       </div>
+
+      <div class="mt-4 d-flex gap-2 justify-content-end">
+        <a href="/expenses/" class="btn btn-outline-secondary">{{ "Takaisin" if read_only else "Peruuta" }}</a>
+        {% if not read_only %}
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>{{ "Tallenna muutokset" if expense else ("Lisää tulo" if etype == "income" else "Lisää kulu") }}
+        </button>
+        {% endif %}
+      </div>
+
     </form>
   </div>
 </div>

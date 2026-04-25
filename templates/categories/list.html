@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Kategoriat{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2><i class="bi bi-tags me-2"></i>Kategoriat</h2>
+    </div>
+
+    {# Add new #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header fw-semibold">Lisää uusi kategoria</div>
+      <div class="card-body">
+        <form method="post" action="/categories/new" class="d-flex gap-2 align-items-center">
+          <select name="category_type" class="form-select w-auto">
+            <option value="expense">Kulu</option>
+            <option value="income">Tulo</option>
+          </select>
+          <input type="text" name="name" class="form-control" placeholder="Kategorian nimi" required maxlength="100">
+          <button type="submit" class="btn btn-primary text-nowrap">
+            <i class="bi bi-plus-circle me-1"></i>Lisää
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {# Expense categories #}
+    {% set expense_cats = categories | selectattr("category_type", "equalto", "expense") | list %}
+    {% set income_cats = categories | selectattr("category_type", "equalto", "income") | list %}
+
+    {% for section_cats, section_label, header_class in [
+        (expense_cats, "Kulukategoriat", "table-danger"),
+        (income_cats, "Tulokategoriat", "table-success")
+    ] %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header fw-semibold {{ header_class }}">
+        {% if section_label == "Kulukategoriat" %}
+          <i class="bi bi-arrow-up-circle me-1"></i>
+        {% else %}
+          <i class="bi bi-arrow-down-circle me-1"></i>
+        {% endif %}
+        {{ section_label }}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th data-sort="str">Nimi</th>
+              <th class="text-end" data-sort="num">Käytetty</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in section_cats %}
+            <tr>
+              <td>
+                <form method="post" action="/categories/{{ cat.id }}/rename"
+                      class="d-flex gap-2 align-items-center">
+                  <input type="text" name="name" class="form-control form-control-sm"
+                         value="{{ cat.name }}" required maxlength="100">
+                  <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap">
+                    <i class="bi bi-check-lg"></i> Tallenna
+                  </button>
+                </form>
+              </td>
+              <td class="text-end">
+                <span class="badge bg-secondary">{{ counts[cat.id] }}</span>
+              </td>
+              <td class="text-end">
+                <form method="post" action="/categories/{{ cat.id }}/delete" class="d-inline"
+                      onsubmit="return confirm('Poistetaanko kategoria {{ cat.name }}?')">
+                  <button class="btn btn-sm btn-outline-danger" title="Poista">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Ei kategorioita.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+{% endblock %}
