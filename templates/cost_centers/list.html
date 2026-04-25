@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Kustannuspaikat{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2><i class="bi bi-building me-2"></i>Kustannuspaikat</h2>
+  <small class="text-muted">Muokkaa <code>cost_centers.yaml</code> ja käynnistä sovellus uudelleen lisätäksesi tai muuttaaksesi kustannuspaikkoja.</small>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>ID</th>
+          <th>Nimi</th>
+          <th>Tyyppi</th>
+          <th>ALV-vähennyskelpoinen</th>
+          <th>Kuvaus</th>
+          <th>Tila</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in centers %}
+        <tr class="{% if not c.active %}text-muted{% endif %}">
+          <td>{{ c.id }}</td>
+          <td><strong>{{ c.name }}</strong></td>
+          <td>
+            {% if c.type == "apartment" %}
+              <span class="badge badge-apartment">Asunto</span>
+            {% elif c.type == "forest" %}
+              <span class="badge badge-forest">Metsä</span>
+            {% else %}
+              <span class="badge badge-other">Muu</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.vat_deductible %}
+              <span class="badge bg-success">Kyllä</span>
+            {% else %}
+              <span class="badge bg-secondary">Ei</span>
+            {% endif %}
+          </td>
+          <td>{{ c.description or "–" }}</td>
+          <td>
+            {% if c.active %}<span class="badge bg-success">Aktiivinen</span>
+            {% else %}<span class="badge bg-secondary">Arkistoitu</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Ei kustannuspaikkoja. Lisää ne <code>cost_centers.yaml</code>-tiedostoon.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

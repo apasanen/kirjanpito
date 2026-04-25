@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ "Muokkaa kulua" if expense else "Uusi kulu" }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <h2 class="mb-4">
+      <i class="bi bi-{{ 'pencil' if expense else 'plus-circle' }} me-2"></i>
+      {{ "Muokkaa kulua" if expense else "Uusi kulu" }}
+    </h2>
+
+    <form method="post"
+          action="{{ '/expenses/' ~ expense.id ~ '/edit' if expense else '/expenses/new' }}"
+          enctype="multipart/form-data"
+          class="card shadow-sm p-4">
+
+      <div class="row g-3">
+
+        {# Date #}
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Päivämäärä <span class="text-danger">*</span></label>
+          <input type="date" name="expense_date" class="form-control" required
+                 value="{{ expense.date.isoformat() if expense else today }}">
+        </div>
+
+        {# Cost center #}
+        <div class="col-md-8">
+          <label class="form-label fw-semibold">Kustannuspaikka <span class="text-danger">*</span></label>
+          <select name="cost_center_id" class="form-select" required>
+            {% for c in centers %}
+            <option value="{{ c.id }}"
+              {% if expense and expense.cost_center_id == c.id %}selected
+              {% elif not expense and loop.first %}selected{% endif %}>
+              {{ c.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Description #}
+        <div class="col-12">
+          <label class="form-label fw-semibold">Kuvaus <span class="text-danger">*</span></label>
+          <input type="text" name="description" class="form-control" required maxlength="255"
+                 placeholder="esim. Putkiremontti huoneisto 2"
+                 value="{{ expense.description if expense else '' }}">
+        </div>
+
+        {# Category #}
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Kategoria</label>
+          <select name="category_id" class="form-select">
+            <option value="">– Ei kategoriaa –</option>
+            {% for cat in categories %}
+            <option value="{{ cat.id }}"
+              {% if expense and expense.category_id == cat.id %}selected{% endif %}>
+              {{ cat.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Gross amount #}
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Brutto € <span class="text-danger">*</span></label>
+          <input type="number" id="gross_amount" name="gross_amount" class="form-control" required
+                 step="0.01" min="0" placeholder="0,00"
+                 value="{{ expense.gross_amount if expense else '' }}">
+        </div>
+
+        {# VAT rate #}
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">ALV %</label>
+          <input type="number" id="vat_rate" name="vat_rate" class="form-control"
+                 step="0.1" min="0" max="100" placeholder="25.5"
+                 value="{{ expense.vat_rate if expense else '25.5' }}">
+          <div class="mt-1">
+            {% for rate in ["0", "10", "14", "25.5"] %}
+            <button type="button" class="btn btn-sm btn-outline-secondary me-1 vat-quick"
+                    data-rate="{{ rate }}">{{ rate }} %</button>
+            {% endfor %}
+          </div>
+        </div>
+
+        {# Calculated display #}
+        <div class="col-12">
+          <div class="alert alert-info py-2 px-3 mb-0" id="vat-preview">
+            <span id="vat-preview-text">Syötä bruttosumma ja ALV-% laskentaa varten.</span>
+          </div>
+        </div>
+
+        {# Notes #}
+        <div class="col-12">
+          <label class="form-label fw-semibold">Muistiinpanot</label>
+          <textarea name="notes" class="form-control" rows="2"
+                    placeholder="Vapaaehtoinen lisätieto">{{ expense.notes if expense else '' }}</textarea>
+        </div>
+
+        {# Receipt image #}
+        <div class="col-12">
+          <label class="form-label fw-semibold">Kuitin kuva</label>
+          {% if expense and expense.receipt_image_path %}
+            <div class="mb-2">
+              {% set ext = expense.receipt_image_path.rsplit(".", 1)[-1].lower() %}
+              {% if ext in ["jpg", "jpeg", "png", "webp"] %}
+                <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank">
+                  <img src="/receipts/{{ expense.receipt_image_path }}"
+                       style="max-height:120px;border-radius:6px;" alt="nykyinen kuitti">
+                </a>
+              {% else %}
+                <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-file-earmark-pdf me-1"></i>Avaa nykyinen kuitti
+                </a>
+              {% endif %}
+              <small class="text-muted ms-2">Lataa uusi tiedosto korvataksesi.</small>
+            </div>
+          {% endif %}
+          <input type="file" name="receipt" class="form-control"
+                 accept=".jpg,.jpeg,.png,.pdf,.webp">
+        </div>
+
+        {# Submit #}
+        <div class="col-12 d-flex gap-2 justify-content-end">
+          <a href="/expenses/" class="btn btn-outline-secondary">Peruuta</a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>{{ "Tallenna muutokset" if expense else "Lisää kulu" }}
+          </button>
+        </div>
+
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

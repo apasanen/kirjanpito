@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Raportit{% endblock %}
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-bar-chart me-2"></i>Vuosiraportti</h2>
+
+<form method="get" action="/reports/yearly" class="card shadow-sm p-4 mb-4">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label fw-semibold">Kustannuspaikka</label>
+      <select name="cost_center_id" class="form-select" required>
+        <option value="">– Valitse –</option>
+        {% for c in centers %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold">Vuosi</label>
+      <select name="year" class="form-select" required>
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-search me-1"></i>Näytä raportti
+      </button>
+    </div>
+  </div>
+</form>
+{% endblock %}

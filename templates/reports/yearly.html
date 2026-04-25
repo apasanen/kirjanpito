@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Vuosiraportti {{ year }} – {{ center.name }}{% endblock %}
+{% block content %}
+
+{# Selector bar #}
+<form method="get" action="/reports/yearly" class="row g-2 align-items-end mb-4">
+  <div class="col-md-5">
+    <select name="cost_center_id" class="form-select" onchange="this.form.submit()">
+      {% for c in centers %}
+      <option value="{{ c.id }}" {% if c.id == center.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="year" class="form-select" onchange="this.form.submit()">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <a href="/reports/yearly/csv?cost_center_id={{ center.id }}&year={{ year }}"
+       class="btn btn-outline-success">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i>Lataa CSV
+    </a>
+  </div>
+</form>
+
+<h2 class="mb-1">{{ center.name }}</h2>
+<p class="text-muted mb-4">
+  Vuosi {{ year }}
+  {% if center.vat_deductible %}
+    · <span class="badge bg-success">ALV-vähennyskelpoinen</span>
+  {% else %}
+    · <span class="badge bg-secondary">ALV ei vähennyskelpoinen (kulu)</span>
+  {% endif %}
+</p>
+
+{# Summary table #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Yhteenveto kategorioittain</div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Kategoria</th>
+          <th class="text-end">Kpl</th>
+          <th class="text-end">Netto €</th>
+          <th class="text-end">ALV €</th>
+          <th class="text-end">Brutto €</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in summary.rows %}
+        <tr>
+          <td>{{ row.category }}</td>
+          <td class="text-end">{{ row.count }}</td>
+          <td class="text-end">{{ "%.2f"|format(row.net|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(row.vat|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(row.gross|float)|replace(".", ",") }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-3">Ei kuluja tälle vuodelle.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if summary.rows %}
+      <tfoot class="table-dark fw-bold">
+        <tr>
+          <td>YHTEENSÄ</td>
+          <td class="text-end">{{ summary.totals.count }}</td>
+          <td class="text-end">{{ "%.2f"|format(summary.totals.net|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(summary.totals.vat|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(summary.totals.gross|float)|replace(".", ",") }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+{# Detail table #}
+{% if expenses %}
+<div class="card shadow-sm">
+  <div class="card-header fw-semibold">Kaikki kulut {{ year }}</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Päivä</th>
+          <th>Kuvaus</th>
+          <th>Kategoria</th>
+          <th class="text-end">ALV %</th>
+          <th class="text-end">Netto €</th>
+          <th class="text-end">ALV €</th>
+          <th class="text-end">Brutto €</th>
+          <th>Kuitti</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exp in expenses %}
+        <tr>
+          <td>{{ exp.date.strftime("%d.%m.%Y") }}</td>
+          <td>{{ exp.description }}</td>
+          <td><small>{{ exp.category.name if exp.category else "–" }}</small></td>
+          <td class="text-end">{{ exp.vat_rate|string|replace(".", ",") }} %</td>
+          <td class="text-end">{{ "%.2f"|format(exp.net_amount|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format(exp.vat_amount|float)|replace(".", ",") }}</td>
+          <td class="text-end fw-semibold">{{ "%.2f"|format(exp.gross_amount|float)|replace(".", ",") }}</td>
+          <td>
+            {% if exp.receipt_image_path %}
+              {% set ext = exp.receipt_image_path.rsplit(".", 1)[-1].lower() %}
+              {% if ext in ["jpg", "jpeg", "png", "webp"] %}
+                <a href="/receipts/{{ exp.receipt_image_path }}" target="_blank">
+                  <img src="/receipts/{{ exp.receipt_image_path }}" class="receipt-thumb" alt="kuitti">
+                </a>
+              {% else %}
+                <a href="/receipts/{{ exp.receipt_image_path }}" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a>
+              {% endif %}
+            {% else %}–{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

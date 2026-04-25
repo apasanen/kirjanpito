@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Receipts (local files)
+receipts/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
