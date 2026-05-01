@@ -120,6 +120,44 @@ class TestExpensesAPI:
         
         assert response.status_code in [302, 303, 200]
 
+    def test_create_expense_with_no_receipt_flag(self, client, api_db_session):
+        """Test creating an expense marked explicitly as having no receipt."""
+        db = api_db_session
+
+        center = CostCenter(
+            name="No Receipt Center",
+            type="apartment",
+            vat_deductible=True
+        )
+        cat = ExpenseCategory(
+            name="No Receipt Category",
+            category_type="expense"
+        )
+        db.add_all([center, cat])
+        db.commit()
+
+        response = client.post(
+            "/expenses/new",
+            data={
+                "cost_center_id": str(center.id),
+                "expense_date": "2026-05-01",
+                "description": "Kulutus ilman kuittia",
+                "entry_type": "expense",
+                "no_receipt": "1",
+                "line_category_id": str(cat.id),
+                "line_description": "Testirivi",
+                "line_gross_amount": "12.50",
+                "line_vat_rate": "0"
+            }
+        )
+
+        assert response.status_code in [302, 303, 200]
+
+        created = db.query(Expense).filter(Expense.description == "Kulutus ilman kuittia").first()
+        assert created is not None
+        assert created.no_receipt is True
+        assert created.receipt_image_path is None
+
 
 class TestReportsAPI:
     """Test reports endpoints."""
@@ -207,4 +245,72 @@ class TestReportsAPI:
         )
         
         assert response.status_code == 200
+
+    def test_yearly_report_warns_missing_receipt(self, client, api_db_session):
+        """Yearly report shows warning for expense without receipt unless exempted."""
+        db = api_db_session
+
+        center = CostCenter(name="Warn Center", type="apartment", vat_deductible=True)
+        cat = ExpenseCategory(name="Warn Category", category_type="expense")
+        db.add_all([center, cat])
+        db.flush()
+
+        exp = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 5, 1),
+            reference="2026-777",
+            entry_type="expense",
+            receipt_image_path=None,
+            no_receipt=False,
+        )
+        db.add(exp)
+        db.flush()
+        db.add(ExpenseLine(
+            expense_id=exp.id,
+            category_id=cat.id,
+            description="No receipt",
+            gross_amount=Decimal("10.00"),
+            vat_rate=Decimal("0"),
+            vat_amount=Decimal("0.00"),
+            net_amount=Decimal("10.00"),
+        ))
+        db.commit()
+
+        response = client.get("/reports/yearly", params={"cost_center_id": center.id, "year": 2026})
+        assert response.status_code == 200
+        assert "puuttuu kuitti" in response.text.lower()
+
+    def test_yearly_report_no_warning_when_no_receipt_marked(self, client, api_db_session):
+        """Yearly report does not warn when expense is marked as no_receipt."""
+        db = api_db_session
+
+        center = CostCenter(name="No Warn Center", type="apartment", vat_deductible=True)
+        cat = ExpenseCategory(name="No Warn Category", category_type="expense")
+        db.add_all([center, cat])
+        db.flush()
+
+        exp = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 5, 1),
+            reference="2026-778",
+            entry_type="expense",
+            receipt_image_path=None,
+            no_receipt=True,
+        )
+        db.add(exp)
+        db.flush()
+        db.add(ExpenseLine(
+            expense_id=exp.id,
+            category_id=cat.id,
+            description="No receipt needed",
+            gross_amount=Decimal("10.00"),
+            vat_rate=Decimal("0"),
+            vat_amount=Decimal("0.00"),
+            net_amount=Decimal("10.00"),
+        ))
+        db.commit()
+
+        response = client.get("/reports/yearly", params={"cost_center_id": center.id, "year": 2026})
+        assert response.status_code == 200
+        assert "puuttuu kuitti" not in response.text.lower()
 

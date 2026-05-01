@@ -94,7 +94,13 @@
                   <i class="bi bi-file-earmark-pdf"></i>
                 </a>
               {% endif %}
-            {% else %}<span class="text-muted">–</span>{% endif %}
+            {% elif exp.no_receipt %}
+              <span class="badge bg-secondary">Ei kuittia</span>
+            {% elif exp.entry_type == "expense" %}
+              <span class="badge bg-warning text-dark">Puuttuu</span>
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
           </td>
           <td style="white-space: nowrap;">
             <a href="/expenses/{{ exp.id }}/view" class="btn btn-sm btn-outline-info" title="Näytä"><i class="bi bi-eye"></i></a>

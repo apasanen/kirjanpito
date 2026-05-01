@@ -223,6 +223,7 @@ async def create_expense(request: Request, db: Session = Depends(get_db)):
 
     description = (form.get("description") or "").strip()
     notes = (form.get("notes") or "").strip() or None
+    no_receipt = form.get("no_receipt") == "1"
     receipt_filename = _save_receipt(form.get("receipt"), exp_date.year)
     lines = _parse_lines(form)
     if not lines:
@@ -237,6 +238,7 @@ async def create_expense(request: Request, db: Session = Depends(get_db)):
         description=description,
         notes=notes,
         receipt_image_path=receipt_filename,
+        no_receipt=no_receipt,
     )
     db.add(expense)
     db.flush()
@@ -313,6 +315,7 @@ async def update_expense(expense_id: int, request: Request, db: Session = Depend
 
     expense.description = (form.get("description") or "").strip()
     expense.notes = (form.get("notes") or "").strip() or None
+    expense.no_receipt = form.get("no_receipt") == "1"
 
     receipt = form.get("receipt")
     if receipt and getattr(receipt, "filename", None):

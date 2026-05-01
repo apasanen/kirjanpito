@@ -69,6 +69,11 @@ def init_db():
             conn.commit()
         except Exception:
             pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN no_receipt BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
         _migrate_category_unique_name_type(conn)
         # apartment_year_settings is created by create_all if it doesn't exist
         _migrate_to_expense_lines(conn)
@@ -115,6 +120,7 @@ def _migrate_to_expense_lines(conn):
             description VARCHAR(255) NOT NULL DEFAULT '',
             notes TEXT,
             receipt_image_path VARCHAR(500),
+            no_receipt BOOLEAN NOT NULL DEFAULT 0,
             drive_file_id VARCHAR(200),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -127,14 +133,25 @@ def _migrate_to_expense_lines(conn):
             SELECT MIN(id) FROM expenses_v1 WHERE reference IS NOT NULL GROUP BY reference
         ) AND reference IS NOT NULL
     """))
-    conn.execute(text("""
-        INSERT INTO expenses (id, reference, entry_type, cost_center_id, date, description, notes,
-                              receipt_image_path, drive_file_id, created_at, updated_at)
-        SELECT id, reference, entry_type, cost_center_id, date,
-               COALESCE(description, '') AS description, notes,
-               receipt_image_path, drive_file_id, created_at, updated_at
-        FROM expenses_v1
-    """))
+    has_no_receipt = "no_receipt" in columns
+    if has_no_receipt:
+        conn.execute(text("""
+            INSERT INTO expenses (id, reference, entry_type, cost_center_id, date, description, notes,
+                                  receipt_image_path, no_receipt, drive_file_id, created_at, updated_at)
+            SELECT id, reference, entry_type, cost_center_id, date,
+                   COALESCE(description, '') AS description, notes,
+                   receipt_image_path, no_receipt, drive_file_id, created_at, updated_at
+            FROM expenses_v1
+        """))
+    else:
+        conn.execute(text("""
+            INSERT INTO expenses (id, reference, entry_type, cost_center_id, date, description, notes,
+                                  receipt_image_path, no_receipt, drive_file_id, created_at, updated_at)
+            SELECT id, reference, entry_type, cost_center_id, date,
+                   COALESCE(description, '') AS description, notes,
+                   receipt_image_path, 0, drive_file_id, created_at, updated_at
+            FROM expenses_v1
+        """))
     conn.execute(text("DROP TABLE expenses_v1"))
     try:
         conn.execute(text("CREATE UNIQUE INDEX ix_expenses_reference ON expenses(reference)"))

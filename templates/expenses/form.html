@@ -160,6 +160,14 @@
             </div>
           {% endif %}
           {% if not read_only %}<input type="file" name="receipt" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.webp">{% endif %}
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="no-receipt" name="no_receipt" value="1"
+                   {% if (expense and expense.no_receipt) or (prefill and prefill.no_receipt) %}checked{% endif %}
+                   {% if read_only %}disabled{% endif %}>
+            <label class="form-check-label" for="no-receipt">
+              Ei kuittia
+            </label>
+          </div>
         </div>
       </div>
 

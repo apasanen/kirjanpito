@@ -1,7 +1,7 @@
 # Technical Specification – Accounting Application
 
-**Version:** 1.0  
-**Date:** April 26, 2026  
+**Version:** 1.1  
+**Date:** May 1, 2026  
 **Technology:** FastAPI, SQLAlchemy, SQLite, Jinja2
 
 ---
@@ -10,8 +10,10 @@
 
 Kirjanpito-ohjelma on suomalainen finanssisovellus, joka hallinnoi kuluja ja tuloja useille kustannuspaikoille (asunnot, metsät, muut). Ohjelmalla voi:
 - Tallentaa multi-line kuluja/tuloja kuiteilla (PDF/kuva)
+- Merkitä kulun tilaan `Ei kuittia`, jolloin puuttuvasta kuitista ei varoiteta
 - Hallita kustannuspaikkoja ja kategorioita
 - Luoda vuosiraportteja ALV-laskennalla
+- Ladata vuosiraportin kaikki tositteet yhdistettynä yhdeksi PDF-tiedostoksi
 - Jakaa multi-page PDF-kuitteja yksittäisiksi sivuiksi
 
 ---
@@ -51,6 +53,7 @@ Pääkulutapahtumat.
 | description | TEXT | Yleinen kuvaus |
 | reference | TEXT UNIQUE | Viite-numero muodossa YYYY-NNN |
 | receipt_image_path | TEXT | Kuitti-tiedoston nimi |
+| no_receipt | BOOLEAN | Tapahtuma on tarkoituksella ilman kuittia |
 | entry_type | TEXT | `income` tai `expense` |
 
 #### `expense_lines`
@@ -117,15 +120,16 @@ Parametrit:
 #### POST `/expenses/new` – Uusi kulu
 **Form Data:**
 - `cost_center_id` (int)
-- `date` (date)
+- `expense_date` (date)
 - `description` (str)
 - `entry_type` ("expense" | "income")
-- `receipt_image` (file, optional)
+- `receipt` (file, optional)
+- `no_receipt` (`"1"`, optional)
 - Line data (multi-value):
-  - `line_category_id[]` (int, optional)
-  - `line_description[]` (str)
-  - `line_gross_amount[]` (decimal)
-  - `line_vat_rate[]` (decimal)
+  - `line_category_id` (int, optional)
+  - `line_description` (str)
+  - `line_gross_amount` (decimal)
+  - `line_vat_rate` (decimal)
 
 **Response:** 303 Redirect (Tapahtumapaikan listaan)
 
@@ -136,6 +140,11 @@ Parametrit:
 Samat parametrit kuin POST /new.
 
 **Response:** 303 Redirect
+
+#### Kuittikäytäntö
+- Jos tapahtumalle on liitetty tiedosto, kuitti näytetään normaalisti.
+- Jos `no_receipt = true`, käyttöliittymä näyttää tilan **Ei kuittia**.
+- Jos tapahtuma on kulu eikä sillä ole kuittia eikä `no_receipt`-merkintää, vuosiraportti näyttää varoituksen.
 
 #### POST `/expenses/{id}/delete` – Poista kulu
 **Response:** 303 Redirect
@@ -171,6 +180,7 @@ Samat parametrit kuin POST /new.
 Näyttää:
 1. **Yhteenveto kategorioittain** (collapsible summary)
 2. Kategoriot joissa +/- toggle näyttää/piilottaa rivit
+3. Varoitusosion kuluista, joilta puuttuu kuitti
 
 **Data rakenne:**
 ```python
@@ -182,6 +192,7 @@ Näyttää:
     "expense_rows": [...],
     "result_gross": decimal
   },
+  "missing_receipts": [Expense, ...],
   "grouped": {
     "income": [
       {
@@ -197,6 +208,13 @@ Näyttää:
 
 #### GET `/reports/yearly/csv?...` – CSV export
 CSV-tiedosto joka sisältää rivin per expense_line.
+
+#### GET `/reports/yearly/receipts-pdf?...` – Yhdistetty tositteiden PDF
+- Yhdistää valitun kustannuspaikan ja vuoden kaikki tositteet yhdeksi PDF:ksi
+- PDF-kuitit lisätään sivu kerrallaan
+- Kuittikuvat (JPG, PNG, WEBP) renderöidään A4-sivuille
+- Jokaiselle sivulle lisätään teksti `Kuitin tunnus: YYYY-NNN`
+- Puuttuvat tai rikkoutuneet tiedostot ohitetaan, jotta lataus ei kaadu koko aineistoon
 
 ---
 
@@ -236,6 +254,11 @@ CSV-tiedosto joka sisältää rivin per expense_line.
 </tr>
 ```
 
+### 4.4 Kuitin tila käyttöliittymässä
+- Tapahtumalomakkeella on valinta **Ei kuittia**
+- Tapahtumalistalla kuittisarakkeessa näkyy joko kuitti, **Ei kuittia** tai varoitus **Puuttuu**
+- Vuosiraportti näyttää varoituslistan vain niistä kuluista, joilta kuitti puuttuu ilman `Ei kuittia`-merkintää
+
 ---
 
 ## 5. Kuitti-käsittely
@@ -246,11 +269,16 @@ CSV-tiedosto joka sisältää rivin per expense_line.
 def _save_receipt(file):
     """Tallenna kuitti ilman pakkausta."""
     # Validoi tiedostotyyppi
-    # Tallenna receipts/ hakemistoon UUID-nimillä
-    # Palauta tiedoston nimi
+  # Tallenna data/receipts/<db>/<year>/ hakemistoon UUID-nimillä
+  # Palauta suhteellinen polku
 ```
 
-### 5.2 Optimointi (split_pdf.py)
+### 5.2 Yhdistetty tositteiden PDF
+- PDF-tiedostot yhdistetään suoraan uuteen PDF-dokumenttiin
+- Kuvat asetetaan A4-sivulle kuvasuhde säilyttäen
+- Jokaiselle sivulle lisätään kuitin tunnus näkyvänä leimana
+
+### 5.3 Optimointi (split_pdf.py)
 
 Erillinen **split_pdf.py** skripti:
 ```bash
@@ -297,6 +325,7 @@ Tietokantaa päivitetään automaattisesti (app/database.py):
 
 1. **`_migrate_to_expense_lines`** – Muunta vanhasta single-line muodosta multi-line
 2. **`_migrate_category_uniqueness`** – Muuta UNIQUE(name) → UNIQUE(name, category_type)
+3. Lisää `expenses.no_receipt` jos sarake puuttuu
 
 Molemmat idempotentit.
 
@@ -304,13 +333,19 @@ Molemmat idempotentit.
 
 ## 9. Konfiguraatio
 
-### 9.1 environment.py
+### 9.1 Ympäristömuuttujat
 
 ```python
-DATABASE_URL = "sqlite:///accounting.db"
-RECEIPTS_DIR = "receipts"
+DATABASE_URL = "sqlite:///data/accounting.db"
+DB_PATH = "data/accounting.db"
+DB_PROFILE = "default"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".webp"}
 ```
+
+Tietokannan valinnan prioriteetti:
+1. `DATABASE_URL`
+2. `DB_PATH`
+3. `DB_PROFILE` → `data/accounting.db` tai `data/accounting_<profile>.db`
 
 ### 9.2 Vaatimukset (requirements.txt)
 
@@ -356,6 +391,27 @@ pymupdf==1.24.0
 3. Rivit pitäisi ilmestyä
 
 **Odotus:** Detail-rivit näkyvät, − merkki vaihtaa +
+
+### 10.4 Puuttuvan kuitin varoitus
+1. Luo kulu ilman liitettyä kuittia
+2. Älä valitse asetusta **Ei kuittia**
+3. Avaa vuosiraportti
+
+**Odotus:** Raportti näyttää varoituksen puuttuvasta kuitista
+
+### 10.5 Ei kuittia -poikkeus
+1. Luo tai muokkaa kulu ilman kuittia
+2. Valitse asetus **Ei kuittia**
+3. Avaa vuosiraportti
+
+**Odotus:** Kulu ei näy puuttuvien kuittien varoituslistassa
+
+### 10.6 Tositteiden PDF-yhdistely
+1. Avaa vuosiraportti
+2. Valitse **Lataa tositteet PDF**
+3. Avaa ladattu tiedosto
+
+**Odotus:** Kaikki valitun rajauksen tositteet ovat yhdessä PDF:ssä ja jokaisella sivulla näkyy kuitin tunnus
 
 ---
 
@@ -417,6 +473,13 @@ pip install -r requirements.txt
 
 ```bash
 .venv\Scripts\uvicorn app.main:app --reload
+```
+
+Profiloitu käynnistys eri tietokannoille:
+
+```bash
+./start.sh --profile ilkka
+start.bat --profile ilkka
 ```
 
 Avaa `http://127.0.0.1:8000`

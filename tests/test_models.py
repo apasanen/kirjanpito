@@ -178,6 +178,35 @@ class TestExpenseModel:
         remaining_lines = db_session.query(ExpenseLine).all()
         assert len(remaining_lines) == 0
 
+    def test_expense_no_receipt_flag_defaults_false(self, db_session):
+        """Expense no_receipt flag defaults to false and can be persisted true."""
+        center = CostCenter(
+            name="Test",
+            type="apartment",
+            vat_deductible=True
+        )
+        db_session.add(center)
+        db_session.flush()
+
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 4, 26),
+            reference="2026-009",
+            entry_type="expense"
+        )
+        db_session.add(expense)
+        db_session.commit()
+
+        retrieved = db_session.query(Expense).filter_by(reference="2026-009").first()
+        assert retrieved is not None
+        assert retrieved.no_receipt is False
+
+        retrieved.no_receipt = True
+        db_session.commit()
+
+        updated = db_session.query(Expense).filter_by(reference="2026-009").first()
+        assert updated.no_receipt is True
+
 
 class TestExpenseLineModel:
     """Test ExpenseLine model."""

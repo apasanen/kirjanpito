@@ -2,15 +2,18 @@ import csv
 import io
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import extract
 from sqlalchemy.orm import Session
+import fitz
 
 from app.database import get_db
 from app.models import ApartmentYearSetting, CostCenter, Expense, ExpenseCategory
+from app.receipt_paths import get_receipts_root
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 templates = Jinja2Templates(directory="templates")
@@ -180,6 +183,10 @@ def yearly_report(
 
     summary = _build_summary(expenses)
     grouped = _group_by_category(expenses)
+    missing_receipts = [
+        exp for exp in expenses
+        if exp.entry_type == "expense" and not exp.receipt_image_path and not exp.no_receipt
+    ]
     centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
     years = _get_years_with_data(db)
 
@@ -203,6 +210,7 @@ def yearly_report(
             "year": year,
             "grouped": grouped,
             "summary": summary,
+            "missing_receipts": missing_receipts,
             "centers": centers,
             "years": years,
             "tax_section": tax_section,
@@ -293,5 +301,111 @@ def yearly_report_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _stamp_reference(page: fitz.Page, reference_text: str):
+    # Add visible receipt identifier to top-left corner of each page.
+    label = f"Kuitin tunnus: {reference_text}"
+    point = fitz.Point(24, 30)
+    page.insert_text(
+        point,
+        label,
+        fontsize=14,
+        fontname="helv",
+        color=(0.15, 0.15, 0.15),
+    )
+
+
+def _append_pdf_receipt(target_doc: fitz.Document, source_path: Path, reference_text: str):
+    src = fitz.open(source_path)
+    try:
+        start_index = target_doc.page_count
+        target_doc.insert_pdf(src)
+        for i in range(start_index, target_doc.page_count):
+            _stamp_reference(target_doc[i], reference_text)
+    finally:
+        src.close()
+
+
+def _append_image_receipt(target_doc: fitz.Document, source_path: Path, reference_text: str):
+    # Render image onto a single A4 portrait page and stamp with the receipt id.
+    img_info = fitz.image_profile(str(source_path))
+    width = img_info.get("width", 1200)
+    height = img_info.get("height", 1600)
+
+    page_width = fitz.paper_size("a4")[0]
+    page_height = fitz.paper_size("a4")[1]
+    page = target_doc.new_page(width=page_width, height=page_height)
+
+    margin = 24
+    top_reserved = 22
+    content_rect = fitz.Rect(margin, margin + top_reserved, page_width - margin, page_height - margin)
+    img_rect = fitz.Rect(0, 0, width, height)
+    placed = img_rect.torect(content_rect)
+    page.insert_image(placed, filename=str(source_path), keep_proportion=True)
+    _stamp_reference(page, reference_text)
+
+
+@router.get("/yearly/receipts-pdf")
+def yearly_receipts_pdf(
+    cost_center_id: int,
+    year: int,
+    db: Session = Depends(get_db),
+):
+    center = db.query(CostCenter).filter(CostCenter.id == cost_center_id).first()
+    if not center:
+        return HTMLResponse("Kustannuspaikka ei löydy", status_code=404)
+
+    expenses = (
+        db.query(Expense)
+        .filter(
+            Expense.cost_center_id == cost_center_id,
+            Expense.date >= date(year, 1, 1),
+            Expense.date <= date(year, 12, 31),
+            Expense.receipt_image_path.isnot(None),
+        )
+        .order_by(Expense.date, Expense.id)
+        .all()
+    )
+
+    receipts_root = get_receipts_root()
+    merged = fitz.open()
+    appended_count = 0
+
+    for exp in expenses:
+        rel = (exp.receipt_image_path or "").replace("\\", "/").strip("/")
+        if not rel:
+            continue
+        src = receipts_root / rel
+        if not src.exists() or not src.is_file():
+            continue
+
+        reference_text = (exp.reference or f"ID-{exp.id}").strip()
+        suffix = src.suffix.lower()
+        try:
+            if suffix == ".pdf":
+                _append_pdf_receipt(merged, src, reference_text)
+                appended_count += 1
+            elif suffix in {".jpg", ".jpeg", ".png", ".webp"}:
+                _append_image_receipt(merged, src, reference_text)
+                appended_count += 1
+        except Exception:
+            # Skip unreadable files and continue building the bundle.
+            continue
+
+    if appended_count == 0 or merged.page_count == 0:
+        merged.close()
+        return HTMLResponse("Valitulla rajauksella ei löytynyt tositteita PDF-lataukseen.", status_code=404)
+
+    pdf_bytes = merged.tobytes(garbage=4, deflate=True)
+    merged.close()
+
+    safe_name = center.name.replace(" ", "_")
+    filename = f"tositteet_{safe_name}_{year}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
