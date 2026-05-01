@@ -9,6 +9,7 @@ from app.database import init_db
 from app.version import VERSION_INFO
 from app.routers import cost_centers, expenses, reports, categories
 from app.receipt_paths import build_receipt_relative_path, get_db_folder_name
+from decimal import Decimal
 
 
 def _backfill_references():
@@ -45,6 +46,26 @@ def _backfill_references():
         db.close()
 
 
+def _seed_mileage_rates():
+    """Seed Verohallinto km-rates for known years if not yet present."""
+    from app.database import SessionLocal
+    from app.models import MileageYearRate
+    db = SessionLocal()
+    defaults = {
+        2023: Decimal("0.53"),
+        2024: Decimal("0.57"),
+        2025: Decimal("0.57"),
+        2026: Decimal("0.59"),
+    }
+    try:
+        for year, rate in defaults.items():
+            if not db.get(MileageYearRate, year):
+                db.add(MileageYearRate(year=year, rate_eur_per_km=rate))
+        db.commit()
+    finally:
+        db.close()
+
+
 def _seed_default_categories():
     from app.database import SessionLocal
     from app.models import ExpenseCategory
@@ -62,6 +83,7 @@ def _seed_default_categories():
             "Metsänhoito",
             "Puunmyyntikulut",
             "Matkakulut",
+            "Kilometrikulut",
             "Toimistokulut",
             "Muut kulut",
         ]
@@ -135,6 +157,7 @@ def _organize_receipts_by_db_and_year():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _seed_mileage_rates()
     _seed_default_categories()
     _backfill_references()
     _organize_receipts_by_db_and_year()

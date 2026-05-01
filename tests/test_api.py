@@ -158,6 +158,50 @@ class TestExpensesAPI:
         assert created.no_receipt is True
         assert created.receipt_image_path is None
 
+    def test_create_mileage_expense(self, client, api_db_session):
+        """Test creating a mileage expense with outbound and return rows."""
+        db = api_db_session
+        center = CostCenter(name="Mileage Center", type="apartment", vat_deductible=True)
+        db.add(center)
+        db.commit()
+
+        mileage_category = db.query(ExpenseCategory).filter_by(
+            name="Kilometrikulut",
+            category_type="expense",
+        ).first()
+        assert mileage_category is not None
+
+        response = client.post(
+            "/expenses/new",
+            data={
+                "cost_center_id": str(center.id),
+                "expense_date": "2026-05-01",
+                "description": "Näyttömatka",
+                "entry_type": "expense",
+                "expense_mode": "mileage",
+                "no_receipt": "1",
+                "line_category_id": [str(mileage_category.id), str(mileage_category.id)],
+                "line_description": ["Menomatka", "Paluumatka"],
+                "line_route_from": ["Koti", "Kohde"],
+                "line_route_to": ["Kohde", "Koti"],
+                "line_vehicle": ["Oma auto", "Oma auto"],
+                "line_mileage_km": ["12.5", "12.5"],
+                "line_mileage_rate": ["0.57", "0.57"],
+            }
+        )
+
+        assert response.status_code in [302, 303, 200]
+
+        created = db.query(Expense).filter(Expense.description == "Näyttömatka").first()
+        assert created is not None
+        assert created.is_mileage is True
+        assert created.no_receipt is True
+        assert len(created.lines) == 2
+        assert created.lines[0].route_from == "Koti"
+        assert created.lines[0].route_to == "Kohde"
+        assert created.lines[0].mileage_km == Decimal("12.50")
+        assert created.lines[0].gross_amount == Decimal("7.13")
+
 
 class TestReportsAPI:
     """Test reports endpoints."""
@@ -313,4 +357,44 @@ class TestReportsAPI:
         response = client.get("/reports/yearly", params={"cost_center_id": center.id, "year": 2026})
         assert response.status_code == 200
         assert "puuttuu kuitti" not in response.text.lower()
+
+    def test_mileage_report(self, client, api_db_session):
+        """Mileage report renders mileage lines for the selected year."""
+        db = api_db_session
+        center = CostCenter(name="Mileage Report Center", type="apartment", vat_deductible=True)
+        category = db.query(ExpenseCategory).filter_by(name="Kilometrikulut", category_type="expense").first()
+        db.add(center)
+        db.flush()
+
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 5, 2),
+            reference="2026-880",
+            entry_type="expense",
+            description="Huoltokäynti",
+            no_receipt=True,
+        )
+        db.add(expense)
+        db.flush()
+        db.add(ExpenseLine(
+            expense_id=expense.id,
+            category_id=category.id if category else None,
+            description="Menomatka",
+            gross_amount=Decimal("11.40"),
+            vat_rate=Decimal("0"),
+            vat_amount=Decimal("0.00"),
+            net_amount=Decimal("11.40"),
+            mileage_km=Decimal("20.00"),
+            mileage_rate=Decimal("0.57"),
+            vehicle="Oma auto",
+            route_from="Koti",
+            route_to="Kohde",
+        ))
+        db.commit()
+
+        response = client.get("/reports/mileage", params={"cost_center_id": center.id, "year": 2026})
+        assert response.status_code == 200
+        assert "Ajopäiväkirja" in response.text
+        assert "Huoltokäynti" in response.text
+        assert "Oma auto" in response.text
 

@@ -5,8 +5,23 @@
 
   const addBtn = document.getElementById('add-line-btn');
   const totalEl = document.getElementById('lines-total');
+  const expenseMode = container.dataset.expenseMode || 'standard';
 
   function calcRow(row) {
+    const isMileage = row.dataset.lineMode === 'mileage' || expenseMode === 'mileage';
+    const preview = row.querySelector('.line-preview');
+    if (isMileage) {
+      const km = parseFloat((row.querySelector('.line-mileage-km')?.value || '0').replace(',', '.')) || 0;
+      const rate = parseFloat((row.querySelector('.line-mileage-rate')?.value || '0').replace(',', '.')) || 0;
+      const total = km * rate;
+      if (preview) {
+        preview.textContent = km > 0
+          ? total.toFixed(2).replace('.', ',') + ' €'
+          : '';
+      }
+      return total;
+    }
+
     const gross = parseFloat((row.querySelector('.line-gross')?.value || '0').replace(',', '.')) || 0;
     const rate = parseFloat((row.querySelector('.line-vat-rate')?.value || '0').replace(',', '.')) || 0;
     let vat = 0, net = gross;
@@ -14,7 +29,6 @@
       vat = (gross * rate) / (100 + rate);
       net = gross - vat;
     }
-    const preview = row.querySelector('.line-preview');
     if (preview) {
       preview.textContent = gross > 0
         ? 'Netto: ' + net.toFixed(2).replace('.', ',') + ' € | ALV: ' + vat.toFixed(2).replace('.', ',') + ' €'
@@ -27,7 +41,14 @@
     let total = 0;
     const rows = container.querySelectorAll('.line-row');
     rows.forEach(function (r) { total += calcRow(r); });
-    if (totalEl) totalEl.textContent = 'Yhteensä brutto: ' + total.toFixed(2).replace('.', ',') + ' €';
+    const label = expenseMode === 'mileage' ? 'Korvaus yhteensä: ' : 'Yhteensä brutto: ';
+    if (totalEl) totalEl.textContent = label + total.toFixed(2).replace('.', ',') + ' €';
+    // Sync hidden expense_date from first mileage row
+    if (expenseMode === 'mileage') {
+      const firstDate = rows[0]?.querySelector('.line-date');
+      const hidden = document.getElementById('expense_date_hidden');
+      if (firstDate && hidden && firstDate.value) hidden.value = firstDate.value;
+    }
     // Disable remove button when only 1 row
     rows.forEach(function (r) {
       const btn = r.querySelector('.remove-line-btn');
@@ -37,7 +58,13 @@
 
   // Input events
   container.addEventListener('input', function (e) {
-    if (e.target.classList.contains('line-gross') || e.target.classList.contains('line-vat-rate')) {
+    if (
+      e.target.classList.contains('line-gross') ||
+      e.target.classList.contains('line-vat-rate') ||
+      e.target.classList.contains('line-mileage-km') ||
+      e.target.classList.contains('line-mileage-rate') ||
+      e.target.classList.contains('line-date')
+    ) {
       updateTotal();
     }
   });
@@ -68,15 +95,27 @@
   if (addBtn) {
     addBtn.addEventListener('click', function () {
       const rows = container.querySelectorAll('.line-row');
-      const newRow = rows[rows.length - 1].cloneNode(true);
-      newRow.querySelectorAll('input[type=number], input[type=text]').forEach(function (inp) { inp.value = ''; });
+      const lastRow = rows[rows.length - 1];
+      const newRow = lastRow.cloneNode(true);
+      // Preserve last row's date as default for new row
+      const lastDate = lastRow.querySelector('.line-date')?.value || '';
+      newRow.querySelectorAll('input[type=number]').forEach(function (inp) {
+        inp.value = inp.classList.contains('line-mileage-rate')
+          ? (lastRow.querySelector('.line-mileage-rate')?.value || '0.57')
+          : '';
+      });
+      newRow.querySelectorAll('input[type=text]').forEach(function (inp) { inp.value = ''; });
+      newRow.querySelectorAll('input[type=date]').forEach(function (inp) {
+        inp.value = lastDate;
+      });
       newRow.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
       newRow.querySelectorAll('.line-preview').forEach(function (el) { el.textContent = ''; });
       const removeBtn = newRow.querySelector('.remove-line-btn');
       if (removeBtn) removeBtn.disabled = false;
       container.appendChild(newRow);
       updateTotal();
-      newRow.querySelector('.line-gross')?.focus();
+      const focusTarget = newRow.querySelector('.line-route-from') || newRow.querySelector('input[type=text]');
+      focusTarget?.focus();
     });
   }
 

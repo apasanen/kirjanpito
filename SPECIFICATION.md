@@ -10,6 +10,7 @@
 
 Kirjanpito-ohjelma on suomalainen finanssisovellus, joka hallinnoi kuluja ja tuloja useille kustannuspaikoille (asunnot, metsät, muut). Ohjelmalla voi:
 - Tallentaa multi-line kuluja/tuloja kuiteilla (PDF/kuva)
+- Tallentaa kilometrikuluja ajopäiväkirjariveinä
 - Merkitä kulun tilaan `Ei kuittia`, jolloin puuttuvasta kuitista ei varoiteta
 - Hallita kustannuspaikkoja ja kategorioita
 - Luoda vuosiraportteja ALV-laskennalla
@@ -69,6 +70,11 @@ Rivit kunkin kulun sisällä (multi-line support).
 | vat_rate | DECIMAL | ALV % (esim. 24.0) |
 | vat_amount | DECIMAL | Laskettu ALV € |
 | net_amount | DECIMAL | Nettosumma € |
+| mileage_km | DECIMAL | Ajetut kilometrit, jos kyseessä kilometririvi |
+| mileage_rate | DECIMAL | Km-korvaus euroina per km |
+| vehicle | TEXT | Ajoneuvo, esim. oma auto |
+| route_from | TEXT | Lähtöpaikka |
+| route_to | TEXT | Kohde |
 | sort_order | INTEGER | Rivin järjestys |
 
 #### `apartment_year_settings`
@@ -125,11 +131,21 @@ Parametrit:
 - `entry_type` ("expense" | "income")
 - `receipt` (file, optional)
 - `no_receipt` (`"1"`, optional)
+- `expense_mode` (`"standard" | "mileage"`)
 - Line data (multi-value):
   - `line_category_id` (int, optional)
   - `line_description` (str)
   - `line_gross_amount` (decimal)
   - `line_vat_rate` (decimal)
+
+Kilometrikulussa käytetään kenttiä:
+- `line_route_from`
+- `line_route_to`
+- `line_vehicle`
+- `line_mileage_km`
+- `line_mileage_rate`
+
+Kilometrikulun summa lasketaan kaavalla `mileage_km * mileage_rate`, ja ALV on `0`.
 
 **Response:** 303 Redirect (Tapahtumapaikan listaan)
 
@@ -209,6 +225,11 @@ Näyttää:
 #### GET `/reports/yearly/csv?...` – CSV export
 CSV-tiedosto joka sisältää rivin per expense_line.
 
+#### GET `/reports/mileage?...` – Ajopäiväkirja
+- Hakee valitun kustannuspaikan ja vuoden kilometririvit
+- Näyttää päivämäärän, tunnuksen, tarkoituksen, reitin, auton, kilometrit ja korvauksen
+- Soveltuu selaimesta tulostettavaksi ajopäiväkirjaksi
+
 #### GET `/reports/yearly/receipts-pdf?...` – Yhdistetty tositteiden PDF
 - Yhdistää valitun kustannuspaikan ja vuoden kaikki tositteet yhdeksi PDF:ksi
 - PDF-kuitit lisätään sivu kerrallaan
@@ -258,6 +279,11 @@ CSV-tiedosto joka sisältää rivin per expense_line.
 - Tapahtumalomakkeella on valinta **Ei kuittia**
 - Tapahtumalistalla kuittisarakkeessa näkyy joko kuitti, **Ei kuittia** tai varoitus **Puuttuu**
 - Vuosiraportti näyttää varoituslistan vain niistä kuluista, joilta kuitti puuttuu ilman `Ei kuittia`-merkintää
+
+### 4.5 Kilometrikulut käyttöliittymässä
+- Tapahtumalistalla on erillinen nappi **Lisää kilometrikulu**
+- Kilometrikulussa voidaan syöttää useita ajopäiväkirjarivejä samalle tapahtumalle, esimerkiksi meno- ja paluumatka
+- Ajopäiväkirja on saatavilla raporttisivulta ja vuosiraportilta omalla painikkeellaan
 
 ---
 
@@ -412,6 +438,13 @@ pymupdf==1.24.0
 3. Avaa ladattu tiedosto
 
 **Odotus:** Kaikki valitun rajauksen tositteet ovat yhdessä PDF:ssä ja jokaisella sivulla näkyy kuitin tunnus
+
+### 10.7 Kilometrikulu ja ajopäiväkirja
+1. Luo uusi kilometrikulu käyttäen kahta riviä (meno ja paluu)
+2. Syötä reitti, auto, kilometrit ja €/km
+3. Avaa raporttisivulta ajopäiväkirja
+
+**Odotus:** Tapahtumasta muodostuu kilometrikulu ja ajopäiväkirjassa näkyvät molemmat rivit sekä summat
 
 ---
 

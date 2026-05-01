@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}{% if read_only and expense %}Näytä kilometrikulu{% elif expense %}Muokkaa kilometrikulu{% else %}Uusi kilometrikulu{% endif %}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-xl-10">
+    <h2 class="mb-4">
+      <i class="bi bi-{{ 'eye' if read_only else ('pencil' if expense else 'sign-turn-right') }} me-2"></i>
+      {% if read_only and expense %}Näytä kilometrikulu{% elif expense %}Muokkaa kilometrikulu{% else %}Uusi kilometrikulu{% endif %}
+    </h2>
+
+    <form method="{% if read_only %}get{% else %}post{% endif %}"
+          action="{{ '/expenses/' ~ expense.id ~ '/edit' if expense else '/expenses/new' }}"
+          enctype="multipart/form-data"
+          class="card shadow-sm p-4"
+          {% if read_only %}onsubmit="return false;"{% endif %}>
+
+      <input type="hidden" name="entry_type" value="expense">
+      <input type="hidden" name="expense_mode" value="mileage">
+
+      <div class="row g-3 mb-3">
+        <div class="col-12 d-flex align-items-center gap-3">
+          {% if expense and expense.reference %}
+            <span class="badge bg-dark font-monospace fs-6">{{ expense.reference }}</span>
+          {% endif %}
+          <span class="badge bg-danger fs-6"><i class="bi bi-car-front me-1"></i>Kilometrikulu</span>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold">Kustannuspaikka <span class="text-danger">*</span></label>
+          <select name="cost_center_id" class="form-select" required {% if read_only %}disabled{% endif %}>
+            {% for c in centers %}
+            <option value="{{ c.id }}"
+              {% if expense and expense.cost_center_id == c.id %}selected
+              {% elif prefill and prefill.cost_center_id == c.id %}selected
+              {% elif not expense and not prefill and loop.first %}selected{% endif %}>
+              {{ c.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Matkan tarkoitus</label>
+          <input type="text" name="description" class="form-control" maxlength="255"
+                 {% if read_only %}disabled{% endif %}
+                 placeholder="esim. Vuokralaisen tapaaminen"
+                 value="{{ expense.description if expense else (prefill.description if prefill else '') }}">
+        </div>
+      </div>
+      {# expense_date is set from the first mileage line's date on submit; provide fallback for header display #}
+      <input type="hidden" name="expense_date" id="expense_date_hidden"
+             value="{{ expense.date.isoformat() if expense else today }}">
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Ajopäiväkirjan rivit <span class="text-danger">*</span></label>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1" style="min-width:1050px">
+            <thead class="table-light">
+              <tr>
+                <th style="width:12%">Päivämäärä <span class="text-danger">*</span></th>
+                <th style="width:14%">Mistä</th>
+                <th style="width:14%">Minne</th>
+                <th style="width:14%">Auto</th>
+                <th style="width:14%">Rivin kuvaus</th>
+                <th style="width:9%">Km</th>
+                <th style="width:9%">€/km</th>
+                <th style="width:10%">Korvaus</th>
+                <th style="width:3%"></th>
+              </tr>
+            </thead>
+            <tbody id="lines-container" data-expense-mode="mileage">
+              {% for line in form_lines %}
+              <tr class="line-row" data-line-mode="mileage">
+                <td>
+                  <input type="hidden" name="line_category_id" value="{{ line.category_id or '' }}">
+                  <input type="date" name="line_date" class="form-control form-control-sm line-date"
+                         {% if read_only %}disabled{% endif %} required
+                         value="{{ line.line_date if line.line_date else today }}">
+                </td>
+                <td>
+                  <input type="text" name="line_route_from" class="form-control form-control-sm"
+                         {% if read_only %}disabled{% endif %}
+                         maxlength="255" value="{{ line.route_from or '' }}" placeholder="esim. Koti">
+                </td>
+                <td>
+                  <input type="text" name="line_route_to" class="form-control form-control-sm"
+                         {% if read_only %}disabled{% endif %}
+                         maxlength="255" value="{{ line.route_to or '' }}" placeholder="esim. Kohde">
+                </td>
+                <td>
+                  <input type="text" name="line_vehicle" class="form-control form-control-sm"
+                         {% if read_only %}disabled{% endif %}
+                         maxlength="100" value="{{ line.vehicle or '' }}" placeholder="esim. Oma auto">
+                </td>
+                <td>
+                  <input type="text" name="line_description" class="form-control form-control-sm"
+                         {% if read_only %}disabled{% endif %}
+                         maxlength="255" value="{{ line.description or '' }}" placeholder="esim. Menomatka">
+                </td>
+                <td>
+                  <input type="number" name="line_mileage_km" class="form-control form-control-sm line-mileage-km"
+                         {% if read_only %}disabled{% endif %}
+                         step="0.1" min="0.1" required placeholder="0,0"
+                         value="{{ line.mileage_km }}">
+                </td>
+                <td>
+                  <input type="number" name="line_mileage_rate" class="form-control form-control-sm line-mileage-rate"
+                         {% if read_only %}disabled{% endif %}
+                         step="0.01" min="0" placeholder="0,59"
+                         value="{{ line.mileage_rate or default_mileage_rate }}">
+                </td>
+                <td><span class="line-preview fw-semibold text-success"></span></td>
+                <td>
+                  {% if not read_only %}
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-line-btn" title="Poista rivi">
+                    <i class="bi bi-dash-circle"></i>
+                  </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex align-items-center gap-3 mt-1">
+          {% if not read_only %}
+          <button type="button" id="add-line-btn" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-plus-circle me-1"></i>Lisää matkarivi
+          </button>
+          {% endif %}
+          <span id="lines-total" class="fw-semibold text-secondary"></span>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Muistiinpanot</label>
+          <textarea name="notes" class="form-control" rows="2" {% if read_only %}disabled{% endif %}
+                    placeholder="Vapaaehtoinen lisätieto">{{ expense.notes if expense else (prefill.notes if prefill else '') }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Kuitin kuva</label>
+          {% if expense and expense.receipt_image_path %}
+            <div class="mb-2">
+              {% set ext = expense.receipt_image_path.rsplit('.', 1)[-1].lower() %}
+              {% if ext in ["jpg","jpeg","png","webp"] %}
+                <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank">
+                  <img src="/receipts/{{ expense.receipt_image_path }}" style="max-height:80px;border-radius:4px" alt="kuitti">
+                </a>
+              {% else %}
+                <a href="/receipts/{{ expense.receipt_image_path }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-file-earmark-pdf me-1"></i>Nykyinen kuitti
+                </a>
+              {% endif %}
+            </div>
+          {% endif %}
+          {% if not read_only %}<input type="file" name="receipt" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.webp">{% endif %}
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="no-receipt" name="no_receipt" value="1"
+                   {% if (expense and expense.no_receipt) or (not expense and not prefill) or (prefill and prefill.no_receipt) %}checked{% endif %}
+                   {% if read_only %}disabled{% endif %}>
+            <label class="form-check-label" for="no-receipt">Ei kuittia</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2 justify-content-end">
+        <a href="/expenses/" class="btn btn-outline-secondary">{{ "Takaisin" if read_only else "Peruuta" }}</a>
+        {% if not read_only %}
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>{{ "Tallenna muutokset" if expense else "Lisää kilometrikulu" }}
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

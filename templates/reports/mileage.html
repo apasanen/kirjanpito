@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Ajopäiväkirja {{ year }} – {{ center.name }}{% endblock %}
+{% block content %}
+
+<form method="get" action="/reports/mileage" class="row g-2 align-items-end mb-4">
+  <div class="col-md-5">
+    <label for="cost-center-select" class="form-label mb-1">Kustannuspaikka</label>
+    <select id="cost-center-select" name="cost_center_id" class="form-select" onchange="this.form.submit()">
+      {% for c in centers %}
+      <option value="{{ c.id }}" {% if c.id == center.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label for="year-select" class="form-label mb-1">Vuosi</label>
+    <select id="year-select" name="year" class="form-select" onchange="this.form.submit()">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Näytä ajopäiväkirja</button>
+  </div>
+  <div class="col-auto">
+    <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer me-1"></i>Tulosta
+    </button>
+  </div>
+  <div class="col-auto">
+    <a href="/reports/yearly?cost_center_id={{ center.id }}&year={{ year }}" class="btn btn-outline-secondary">
+      Takaisin raporttiin
+    </a>
+  </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h2 class="mb-1">Ajopäiväkirja</h2>
+    <p class="text-muted mb-0">{{ center.name }} · {{ year }}</p>
+  </div>
+  <div class="text-end small text-muted">
+    <div>Yhteensä km: <strong>{{ "%.2f"|format(total_km|float)|replace(".", ",") }}</strong></div>
+    <div>Yhteensä korvaus: <strong>{{ "%.2f"|format(total_amount|float)|replace(".", ",") }} €</strong></div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-secondary mb-4">
+  <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-gear me-2"></i>Kilometrikorvaus {{ year }}</span>
+    <form method="post" action="/reports/mileage/set-rate" class="d-flex align-items-center gap-2 mb-0">
+      <input type="hidden" name="cost_center_id" value="{{ center.id }}">
+      <input type="hidden" name="year" value="{{ year }}">
+      <small class="text-muted">€/km:</small>
+      <input type="number" name="rate_eur_per_km" class="form-control form-control-sm"
+             style="width:6rem" step="0.01" min="0.01"
+             value="{{ '%.4f'|format(mileage_rate|float)|replace('.', ',') }}">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Tallenna</button>
+    </form>
+  </div>
+  <div class="card-body py-2 small text-muted">
+    Tätä oletuskorvausta käytetään uusilla kilometrikuluilla vuodelle {{ year }}. Verohallinto julkaisee vuosikohtaisen arvon tammikuussa.
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Päivä</th>
+          <th>Tunnus</th>
+          <th>Tarkoitus</th>
+          <th>Reitti</th>
+          <th>Auto</th>
+          <th class="text-end">Km</th>
+          <th class="text-end">€/km</th>
+          <th class="text-end">Korvaus €</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in mileage_lines %}
+        <tr>
+          <td>{{ (line.line_date or line.expense.date).strftime("%d.%m.%Y") }}</td>
+          <td><a href="/expenses/{{ line.expense.id }}/edit" class="badge bg-dark font-monospace text-decoration-none">{{ line.expense.reference or "–" }}</a></td>
+          <td>
+            <div>{{ line.expense.description or line.description or "" }}</div>
+            {% if line.description and line.description != line.expense.description %}
+            <small class="text-muted">{{ line.description }}</small>
+            {% endif %}
+          </td>
+          <td>{{ (line.route_from or "") ~ (" - " if line.route_from or line.route_to else "") ~ (line.route_to or "") }}</td>
+          <td>{{ line.vehicle or "" }}</td>
+          <td class="text-end">{{ "%.2f"|format((line.mileage_km or 0)|float)|replace(".", ",") }}</td>
+          <td class="text-end">{{ "%.2f"|format((line.mileage_rate or 0)|float)|replace(".", ",") }}</td>
+          <td class="text-end fw-semibold">{{ "%.2f"|format(line.gross_amount|float)|replace(".", ",") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">Ei kilometrikuluja valitulla rajauksella.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if mileage_lines %}
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td colspan="5" class="text-end">Yhteensä:</td>
+          <td class="text-end">{{ "%.2f"|format(total_km|float)|replace(".", ",") }}</td>
+          <td></td>
+          <td class="text-end">{{ "%.2f"|format(total_amount|float)|replace(".", ",") }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -118,6 +118,7 @@ def api_db_session():
     categories = [
         ExpenseCategory(name="Siivous", category_type="expense"),
         ExpenseCategory(name="Korjaukset", category_type="expense"),
+        ExpenseCategory(name="Kilometrikulut", category_type="expense"),
         ExpenseCategory(name="Vuokra", category_type="income"),
         ExpenseCategory(name="Muut", category_type="expense"),
     ]

@@ -323,3 +323,41 @@ class TestExpenseLineModel:
         
         total_gross = sum(line.gross_amount for line in lines)
         assert total_gross == Decimal("150.00")
+
+    def test_mileage_line_marks_expense_as_mileage(self, db_session):
+        """Mileage fields identify a mileage expense line and parent expense."""
+        center = CostCenter(name="Mileage Test", type="apartment", vat_deductible=True)
+        cat = ExpenseCategory(name="Kilometrikulut", category_type="expense")
+        db_session.add_all([center, cat])
+        db_session.flush()
+
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 5, 1),
+            reference="2026-990",
+            entry_type="expense",
+        )
+        db_session.add(expense)
+        db_session.flush()
+
+        line = ExpenseLine(
+            expense_id=expense.id,
+            category_id=cat.id,
+            description="Menomatka",
+            gross_amount=Decimal("5.70"),
+            vat_rate=Decimal("0"),
+            vat_amount=Decimal("0.00"),
+            net_amount=Decimal("5.70"),
+            mileage_km=Decimal("10.00"),
+            mileage_rate=Decimal("0.57"),
+            vehicle="Oma auto",
+            route_from="A",
+            route_to="B",
+        )
+        db_session.add(line)
+        db_session.commit()
+
+        retrieved = db_session.query(ExpenseLine).filter_by(description="Menomatka").first()
+        assert retrieved is not None
+        assert retrieved.is_mileage is True
+        assert expense.is_mileage is True

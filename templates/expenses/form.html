@@ -19,6 +19,7 @@
           {% if read_only %}onsubmit="return false;"{% endif %}>
 
       <input type="hidden" name="entry_type" value="{{ etype }}">
+  <input type="hidden" name="expense_mode" value="{{ expense_mode or 'standard' }}">
 
       {# Header row #}
       <div class="row g-3 mb-3">

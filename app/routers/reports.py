@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 import fitz
 
 from app.database import get_db
-from app.models import ApartmentYearSetting, CostCenter, Expense, ExpenseCategory
+from app.models import ApartmentYearSetting, CostCenter, Expense, ExpenseCategory, ExpenseLine, MileageYearRate
 from app.receipt_paths import get_receipts_root
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -302,6 +302,80 @@ def yearly_report_csv(
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _get_mileage_rate(db: Session, year: int) -> Decimal:
+    setting = db.get(MileageYearRate, year)
+    return setting.rate_eur_per_km if setting else Decimal("0.57")
+
+
+@router.post("/mileage/set-rate")
+def set_mileage_rate(
+    cost_center_id: int = Form(...),
+    year: int = Form(...),
+    rate_eur_per_km: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        rate = Decimal(rate_eur_per_km.replace(",", "."))
+        if rate <= 0:
+            raise ValueError
+    except Exception:
+        return RedirectResponse(f"/reports/mileage?cost_center_id={cost_center_id}&year={year}", status_code=303)
+    setting = db.get(MileageYearRate, year)
+    if not setting:
+        setting = MileageYearRate(year=year, rate_eur_per_km=rate)
+        db.add(setting)
+    else:
+        setting.rate_eur_per_km = rate
+    db.commit()
+    return RedirectResponse(f"/reports/mileage?cost_center_id={cost_center_id}&year={year}", status_code=303)
+
+
+@router.get("/mileage", response_class=HTMLResponse)
+def mileage_report(
+    request: Request,
+    cost_center_id: int,
+    year: int,
+    db: Session = Depends(get_db),
+):
+    center = db.query(CostCenter).filter(CostCenter.id == cost_center_id).first()
+    if not center:
+        return HTMLResponse("Kustannuspaikka ei löydy", status_code=404)
+
+    mileage_lines = (
+        db.query(ExpenseLine)
+        .join(Expense, ExpenseLine.expense_id == Expense.id)
+        .filter(
+            Expense.cost_center_id == cost_center_id,
+            Expense.date >= date(year, 1, 1),
+            Expense.date <= date(year, 12, 31),
+            ExpenseLine.mileage_km.isnot(None),
+        )
+        .order_by(Expense.date, Expense.id, ExpenseLine.sort_order)
+        .all()
+    )
+    centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
+    years = _get_years_with_data(db)
+    total_km = sum((line.mileage_km or Decimal("0")) for line in mileage_lines)
+    total_amount = sum((line.gross_amount for line in mileage_lines), Decimal("0"))
+    mileage_rate = _get_mileage_rate(db, year)
+
+    return templates.TemplateResponse(
+        request,
+        "reports/mileage.html",
+        {
+            "request": request,
+            "center": center,
+            "year": year,
+            "mileage_lines": mileage_lines,
+            "total_km": total_km,
+            "total_amount": total_amount,
+            "mileage_rate": mileage_rate,
+            "centers": centers,
+            "years": years,
+        },
     )
 
 

@@ -74,6 +74,37 @@ def init_db():
             conn.commit()
         except Exception:
             pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN mileage_km NUMERIC(10, 2)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN mileage_rate NUMERIC(10, 2)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN vehicle VARCHAR(100)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN route_from VARCHAR(255)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN route_to VARCHAR(255)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        # mileage_year_rates is created by create_all; no ALTER needed
+        try:
+            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN line_date DATE"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
         _migrate_category_unique_name_type(conn)
         # apartment_year_settings is created by create_all if it doesn't exist
         _migrate_to_expense_lines(conn)

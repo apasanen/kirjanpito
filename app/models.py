@@ -77,6 +77,10 @@ class Expense(Base):
                 result.append(name)
         return result
 
+    @property
+    def is_mileage(self) -> bool:
+        return any(line.is_mileage for line in self.lines)
+
 
 class ExpenseLine(Base):
     __tablename__ = "expense_lines"
@@ -89,10 +93,20 @@ class ExpenseLine(Base):
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
     net_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    mileage_km: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    mileage_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    line_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    vehicle: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    route_from: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    route_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     expense: Mapped["Expense"] = relationship("Expense", back_populates="lines")
     category: Mapped[Optional["ExpenseCategory"]] = relationship("ExpenseCategory", back_populates="lines")
+
+    @property
+    def is_mileage(self) -> bool:
+        return self.mileage_km is not None
 
 
 class ApartmentYearSetting(Base):
@@ -102,3 +116,11 @@ class ApartmentYearSetting(Base):
     cost_center_id: Mapped[int] = mapped_column(Integer, ForeignKey("cost_centers.id"), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     paaomavastike_tuloutettu: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class MileageYearRate(Base):
+    """Verohallinnon vuosittainen kilometrikorvaus."""
+    __tablename__ = "mileage_year_rates"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rate_eur_per_km: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
