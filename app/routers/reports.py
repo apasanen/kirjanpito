@@ -6,6 +6,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,6 +14,16 @@ from app.models import ApartmentYearSetting, CostCenter, Expense, ExpenseCategor
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 templates = Jinja2Templates(directory="templates")
+
+
+def _get_years_with_data(db: Session) -> list[int]:
+    rows = (
+        db.query(extract("year", Expense.date).label("year"))
+        .distinct()
+        .order_by(extract("year", Expense.date).desc())
+        .all()
+    )
+    return [int(row.year) for row in rows if row.year is not None]
 
 
 def _build_summary(expenses: list) -> dict:
@@ -136,11 +147,12 @@ def _build_tax_section(expenses: list, paaomavastike_tuloutettu: bool) -> dict:
 @router.get("/", response_class=HTMLResponse)
 def report_index(request: Request, db: Session = Depends(get_db)):
     centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
-    years = list(range(date.today().year, date.today().year - 6, -1))
+    years = _get_years_with_data(db)
+    current_year = years[0] if years else None
     return templates.TemplateResponse(
         request,
         "reports/index.html",
-        {"request": request, "centers": centers, "years": years, "current_year": date.today().year},
+        {"request": request, "centers": centers, "years": years, "current_year": current_year},
     )
 
 
@@ -169,7 +181,7 @@ def yearly_report(
     summary = _build_summary(expenses)
     grouped = _group_by_category(expenses)
     centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
-    years = list(range(date.today().year, date.today().year - 6, -1))
+    years = _get_years_with_data(db)
 
     # Tax section only for apartment cost centers
     tax_section = None

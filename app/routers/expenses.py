@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -73,6 +74,16 @@ def _compute_vat(gross: Decimal, vat_rate: Decimal):
         return Decimal("0.00"), gross.quantize(Decimal("0.01"))
     vat_amount = (gross * vat_rate / (100 + vat_rate)).quantize(Decimal("0.01"))
     return vat_amount, (gross - vat_amount).quantize(Decimal("0.01"))
+
+
+def _get_years_with_data(db: Session) -> list[int]:
+    rows = (
+        db.query(extract("year", Expense.date).label("year"))
+        .distinct()
+        .order_by(extract("year", Expense.date).desc())
+        .all()
+    )
+    return [int(row.year) for row in rows if row.year is not None]
 
 
 def _lines_to_dicts(lines) -> list:
@@ -142,7 +153,7 @@ def list_expenses(
         query = query.filter(Expense.entry_type == entry_type)
     expenses = query.order_by(Expense.date.desc()).all()
     centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
-    years = list(range(date.today().year, date.today().year - 6, -1))
+    years = _get_years_with_data(db)
     return templates.TemplateResponse(
         request,
         "expenses/list.html",

@@ -1,8 +1,22 @@
 import os
+import re
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+
+
+def _sanitize_profile_name(profile: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", profile or "")
+    safe = safe.strip("._-")
+    return safe or "default"
+
+
+def _default_db_path() -> Path:
+    profile = _sanitize_profile_name(os.environ.get("DB_PROFILE", "default"))
+    if profile == "default":
+        return Path("data") / "accounting.db"
+    return Path("data") / f"accounting_{profile}.db"
 
 
 def _get_database_url() -> str:
@@ -10,7 +24,7 @@ def _get_database_url() -> str:
     if database_url:
         return database_url
 
-    db_path = Path(os.environ.get("DB_PATH", "data/accounting.db"))
+    db_path = Path(os.environ.get("DB_PATH", str(_default_db_path())))
     db_path.parent.mkdir(parents=True, exist_ok=True)
     if db_path.is_absolute():
         return f"sqlite:///{db_path.as_posix()}"

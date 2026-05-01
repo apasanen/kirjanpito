@@ -23,6 +23,31 @@ start-test-env.bat
 
 Open in browser: `http://127.0.0.1:8000`
 
+### Separate Databases (e.g. personal vs Ilkka business)
+
+Use a profile name to keep data fully separate.
+
+Linux/macOS:
+
+```bash
+./start.sh --profile ilkka
+```
+
+Windows:
+
+```bash
+start.bat --profile ilkka
+```
+
+This creates/uses a dedicated database file:
+
+- `data/accounting.db` for default profile
+- `data/accounting_ilkka.db` for profile `ilkka`
+
+Receipts are also separated by database name under `data/receipts/...`.
+
+You can still override everything manually with `DB_PATH` or `DATABASE_URL`.
+
 ### Linux / macOS
 
 ```bash
