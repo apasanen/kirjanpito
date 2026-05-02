@@ -55,7 +55,7 @@ def _seed_mileage_rates():
         2023: Decimal("0.53"),
         2024: Decimal("0.57"),
         2025: Decimal("0.57"),
-        2026: Decimal("0.59"),
+        2026: Decimal("0.27"),
     }
     try:
         for year, rate in defaults.items():

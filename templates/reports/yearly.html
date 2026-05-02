@@ -35,12 +35,6 @@
       <i class="bi bi-file-earmark-pdf me-1"></i>Lataa tositteet PDF
     </a>
   </div>
-  <div class="col-auto">
-    <a href="/reports/mileage?cost_center_id={{ center.id }}&year={{ year }}"
-       class="btn btn-outline-secondary">
-      <i class="bi bi-car-front me-1"></i>Ajopäiväkirja
-    </a>
-  </div>
 </form>
 
 <h2 class="mb-1">{{ center.name }}</h2>
@@ -285,6 +279,94 @@ function toggleDetails(headerRow) {
         </tr>
       </tfoot>
     </table>
+  </div>
+</div>
+{% endif %}
+
+{# Ajopäiväkirja #}
+{% if mileage_lines is defined %}
+<div class="card shadow-sm mt-4">
+  <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-car-front me-2"></i>Ajopäiväkirja {{ year }}</span>
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            data-bs-toggle="collapse" data-bs-target="#mileage-collapse"
+            aria-expanded="false">
+      <i class="bi bi-list-ul me-1"></i>Näytä rivit
+    </button>
+  </div>
+  <div class="card-body d-flex gap-5 flex-wrap py-3">
+    <div>
+      <div class="text-muted small">Ajettu yhteensä</div>
+      <div class="fs-5 fw-bold">{{ "%.1f"|format(mileage_total_km|float)|replace(".", ",") }} km</div>
+    </div>
+    <div>
+      <div class="text-muted small">Korvaus yhteensä</div>
+      <div class="fs-5 fw-bold text-success">{{ "%.2f"|format(mileage_total_amount|float)|replace(".", ",") }} €</div>
+    </div>
+    <div>
+      <div class="text-muted small">Korvaus {{ year }} (€/km)</div>
+      <div class="fs-5 fw-bold">{{ "%.4f"|format(mileage_rate|float) }}</div>
+    </div>
+    <div class="ms-auto align-self-center">
+      <form method="post" action="/reports/mileage/set-rate" class="d-flex align-items-center gap-2">
+        <input type="hidden" name="cost_center_id" value="{{ center.id }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <small class="text-muted">€/km:</small>
+        <input type="number" name="rate_eur_per_km" class="form-control form-control-sm"
+               style="width:6rem" step="0.0001" min="0.0001"
+               value="{{ '%.4f'|format(mileage_rate|float) }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Tallenna</button>
+      </form>
+    </div>
+  </div>
+  <div class="collapse" id="mileage-collapse">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Päivä</th>
+            <th>Tunnus</th>
+            <th>Tarkoitus</th>
+            <th>Reitti</th>
+            <th>Auto</th>
+            <th class="text-end">Km</th>
+            <th class="text-end">€/km</th>
+            <th class="text-end">Korvaus €</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in mileage_lines %}
+          <tr>
+            <td>{{ (line.line_date or line.expense.date).strftime("%d.%m.%Y") }}</td>
+            <td><a href="/expenses/{{ line.expense.id }}/edit" class="badge bg-dark font-monospace text-decoration-none">{{ line.expense.reference or "–" }}</a></td>
+            <td>
+              <div>{{ line.expense.description or line.description or "" }}</div>
+              {% if line.description and line.description != line.expense.description %}
+              <small class="text-muted">{{ line.description }}</small>
+              {% endif %}
+            </td>
+            <td>{{ (line.route_from or "") ~ (" - " if line.route_from or line.route_to else "") ~ (line.route_to or "") }}</td>
+            <td>{{ line.vehicle or "" }}</td>
+            <td class="text-end">{{ "%.2f"|format((line.mileage_km or 0)|float)|replace(".", ",") }}</td>
+            <td class="text-end">{{ "%.2f"|format((line.mileage_rate or 0)|float)|replace(".", ",") }}</td>
+            <td class="text-end fw-semibold">{{ "%.2f"|format(line.gross_amount|float)|replace(".", ",") }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-3">Ei kilometrikuluja tälle vuodelle.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if mileage_lines %}
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="5" class="text-end">Yhteensä:</td>
+            <td class="text-end">{{ "%.2f"|format(mileage_total_km|float)|replace(".", ",") }}</td>
+            <td></td>
+            <td class="text-end">{{ "%.2f"|format(mileage_total_amount|float)|replace(".", ",") }}</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
   </div>
 </div>
 {% endif %}

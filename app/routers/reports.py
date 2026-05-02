@@ -215,8 +215,37 @@ def yearly_report(
             "years": years,
             "tax_section": tax_section,
             "paaomavastike_tuloutettu": year_setting.paaomavastike_tuloutettu if year_setting else True,
+            "mileage_lines": _get_mileage_lines(db, cost_center_id, year),
+            "mileage_rate": _get_mileage_rate(db, year),
+            "mileage_total_km": _mileage_total_km(db, cost_center_id, year),
+            "mileage_total_amount": _mileage_total_amount(db, cost_center_id, year),
         },
     )
+
+
+def _get_mileage_lines(db: Session, cost_center_id: int, year: int):
+    return (
+        db.query(ExpenseLine)
+        .join(Expense, ExpenseLine.expense_id == Expense.id)
+        .filter(
+            Expense.cost_center_id == cost_center_id,
+            Expense.date >= date(year, 1, 1),
+            Expense.date <= date(year, 12, 31),
+            ExpenseLine.mileage_km.isnot(None),
+        )
+        .order_by(Expense.date, Expense.id, ExpenseLine.sort_order)
+        .all()
+    )
+
+
+def _mileage_total_km(db: Session, cost_center_id: int, year: int) -> Decimal:
+    lines = _get_mileage_lines(db, cost_center_id, year)
+    return sum((l.mileage_km or Decimal("0") for l in lines), Decimal("0"))
+
+
+def _mileage_total_amount(db: Session, cost_center_id: int, year: int) -> Decimal:
+    lines = _get_mileage_lines(db, cost_center_id, year)
+    return sum((l.gross_amount for l in lines), Decimal("0"))
 
 
 @router.post("/yearly/set-paaomavastike")
