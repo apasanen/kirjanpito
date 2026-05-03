@@ -51,8 +51,6 @@
           <th data-sort="str">Kuvaus</th>
           <th data-sort="str">Kustannuspaikka</th>
           <th data-sort="str">Kategoriat</th>
-          <th class="text-end" data-sort="num">Netto €</th>
-          <th class="text-end" data-sort="num">ALV €</th>
           <th class="text-end" data-sort="num">Brutto €</th>
           <th>Kuitti</th>
           <th></th>
@@ -65,7 +63,7 @@
         {% if month_key != ns.cur_month %}
           {% set ns.cur_month = month_key %}
           <tr class="table-secondary month-separator">
-            <td colspan="11" class="fw-semibold small text-uppercase text-muted py-1 ps-2">
+            <td colspan="9" class="fw-semibold small text-uppercase text-muted py-1 ps-2">
               {{ exp.date.strftime("%B %Y") }}
             </td>
           </tr>
@@ -80,8 +78,6 @@
           <td>{{ exp.description or "" }}</td>
           <td><small>{{ exp.cost_center.name }}</small></td>
           <td><small>{% if exp.is_mileage %}Kilometrikulu{% else %}{{ exp.category_names | join(", ") or "–" }}{% endif %}</small></td>
-          <td class="text-end">{{ "%.2f"|format(exp.total_net|float)|replace(".", ",") }}</td>
-          <td class="text-end">{{ "%.2f"|format(exp.total_vat|float)|replace(".", ",") }}</td>
           <td class="text-end fw-bold">{{ "%.2f"|format(exp.total_gross|float)|replace(".", ",") }}</td>
           <td>
             {% if exp.receipt_image_path %}
@@ -114,15 +110,13 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="11" class="text-center text-muted py-4">Ei tapahtumia valituilla suodattimilla.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">Ei tapahtumia valituilla suodattimilla.</td></tr>
         {% endfor %}
       </tbody>
       {% if expenses %}
       <tfoot class="table-light fw-bold">
         <tr>
           <td colspan="6" class="text-end">Yhteensä:</td>
-          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_net")|float)|replace(".", ",") }}</td>
-          <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_vat")|float)|replace(".", ",") }}</td>
           <td class="text-end">{{ "%.2f"|format(expenses|sum(attribute="total_gross")|float)|replace(".", ",") }}</td>
           <td colspan="2"></td>
         </tr>
