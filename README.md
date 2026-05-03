@@ -70,28 +70,6 @@ docker-compose up
 http://127.0.0.1:8000
 ```
 
-## Project Structure
-
-```
-├── app/
-│   ├── main.py              # FastAPI application
-│   ├── models.py            # Database models
-│   ├── database.py          # Database configuration
-│   └── routers/
-│       ├── expenses.py      # Expenses API
-│       ├── cost_centers.py  # Cost centers API
-│       ├── categories.py    # Categories API
-│       └── reports.py       # Reports API
-├── templates/               # HTML templates (Jinja2)
-├── static/                  # JavaScript, CSS
-├── accounting.db            # SQLite database
-├── receipts/                # Stored receipts
-├── split_pdf.py             # PDF splitting utility
-├── requirements.txt         # Python dependencies
-├── SPECIFICATION.md         # Comprehensive technical documentation
-└── start-test-env.*         # Startup scripts
-```
-
 ## Technology
 
 | Component | Technology | Version |
