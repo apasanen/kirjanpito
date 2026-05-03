@@ -31,6 +31,25 @@
         <li class="nav-item"><a class="nav-link" href="/categories/"><i class="bi bi-tags me-1"></i>Kategoriat</a></li>
         <li class="nav-item"><a class="nav-link" href="/cost-centers/"><i class="bi bi-building me-1"></i>Kustannuspaikat</a></li>
       </ul>
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+            <i class="bi bi-database me-1"></i>{{ request.state.profile if request.state.profile != 'default' else 'Oletus' }}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            {% for p in request.state.profiles %}
+            <li>
+              <form method="post" action="/switch-profile" class="d-inline">
+                <input type="hidden" name="profile" value="{{ p }}">
+                <button type="submit" class="dropdown-item {% if p == request.state.profile %}active{% endif %}">
+                  {{ p if p != 'default' else 'Oletus' }}
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </li>
+      </ul>
     </div>
   </div>
 </nav>

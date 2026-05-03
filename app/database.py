@@ -1,9 +1,11 @@
 import os
 import re
 from pathlib import Path
+from typing import Generator
 
+from fastapi import Request
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 
 
 def _sanitize_profile_name(profile: str) -> str:
@@ -12,11 +14,15 @@ def _sanitize_profile_name(profile: str) -> str:
     return safe or "default"
 
 
-def _default_db_path() -> Path:
-    profile = _sanitize_profile_name(os.environ.get("DB_PROFILE", "default"))
+def _db_path_for_profile(profile: str) -> Path:
     if profile == "default":
         return Path("data") / "accounting.db"
     return Path("data") / f"accounting_{profile}.db"
+
+
+def _default_db_path() -> Path:
+    profile = _sanitize_profile_name(os.environ.get("DB_PROFILE", "default"))
+    return _db_path_for_profile(profile)
 
 
 def _get_database_url() -> str:
@@ -36,78 +42,81 @@ DATABASE_URL = _get_database_url()
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Per-profile engine cache
+_profile_sessions: dict[str, sessionmaker] = {}
+
+
+def _get_session_for_profile(profile: str) -> sessionmaker:
+    if profile not in _profile_sessions:
+        db_path = _db_path_for_profile(profile)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        if db_path.is_absolute():
+            url = f"sqlite:///{db_path.as_posix()}"
+        else:
+            url = f"sqlite:///./{db_path.as_posix()}"
+        eng = create_engine(url, connect_args={"check_same_thread": False})
+        _init_engine(eng)
+        _profile_sessions[profile] = sessionmaker(autocommit=False, autoflush=False, bind=eng)
+    return _profile_sessions[profile]
+
+
+def list_profiles() -> list[str]:
+    """Return profile names derived from data/accounting*.db files."""
+    data_dir = Path("data")
+    if not data_dir.exists():
+        return ["default"]
+    profiles = []
+    for db_file in sorted(data_dir.glob("accounting*.db")):
+        name = db_file.stem  # e.g. "accounting" or "accounting_ilkka"
+        if name == "accounting":
+            profiles.append("default")
+        elif name.startswith("accounting_"):
+            profiles.append(name[len("accounting_"):])
+    return profiles if profiles else ["default"]
+
 
 class Base(DeclarativeBase):
     pass
 
 
-def get_db():
-    db = SessionLocal()
+def get_db(request: Request) -> Generator[Session, None, None]:
+    profile = _sanitize_profile_name(request.cookies.get("db_profile", "default"))
+    session_factory = _get_session_for_profile(profile)
+    db = session_factory()
     try:
         yield db
     finally:
         db.close()
 
 
-def init_db():
-    from app import models  # noqa: F401 – ensures models are registered
-    Base.metadata.create_all(bind=engine)
-    # Migrate: add reference column if it doesn't exist yet
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE expenses ADD COLUMN reference VARCHAR(20)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expenses ADD COLUMN entry_type VARCHAR(10) NOT NULL DEFAULT 'expense'"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_categories ADD COLUMN category_type VARCHAR(10) NOT NULL DEFAULT 'expense'"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expenses ADD COLUMN no_receipt BOOLEAN NOT NULL DEFAULT 0"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN mileage_km NUMERIC(10, 2)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN mileage_rate NUMERIC(10, 2)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN vehicle VARCHAR(100)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN route_from VARCHAR(255)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN route_to VARCHAR(255)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        # mileage_year_rates is created by create_all; no ALTER needed
-        try:
-            conn.execute(text("ALTER TABLE expense_lines ADD COLUMN line_date DATE"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+def _init_engine(eng) -> None:
+    """Run schema creation and migrations on the given engine."""
+    from app import models  # noqa: F401
+    Base.metadata.create_all(bind=eng)
+    with eng.connect() as conn:
+        for col_sql in [
+            "ALTER TABLE expenses ADD COLUMN reference VARCHAR(20)",
+            "ALTER TABLE expenses ADD COLUMN entry_type VARCHAR(10) NOT NULL DEFAULT 'expense'",
+            "ALTER TABLE expense_categories ADD COLUMN category_type VARCHAR(10) NOT NULL DEFAULT 'expense'",
+            "ALTER TABLE expenses ADD COLUMN no_receipt BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE expense_lines ADD COLUMN mileage_km NUMERIC(10, 2)",
+            "ALTER TABLE expense_lines ADD COLUMN mileage_rate NUMERIC(10, 2)",
+            "ALTER TABLE expense_lines ADD COLUMN vehicle VARCHAR(100)",
+            "ALTER TABLE expense_lines ADD COLUMN route_from VARCHAR(255)",
+            "ALTER TABLE expense_lines ADD COLUMN route_to VARCHAR(255)",
+            "ALTER TABLE expense_lines ADD COLUMN line_date DATE",
+        ]:
+            try:
+                conn.execute(text(col_sql))
+                conn.commit()
+            except Exception:
+                pass
         _migrate_category_unique_name_type(conn)
-        # apartment_year_settings is created by create_all if it doesn't exist
         _migrate_to_expense_lines(conn)
+
+
+def init_db():
+    _init_engine(engine)
 
 
 def _migrate_to_expense_lines(conn):

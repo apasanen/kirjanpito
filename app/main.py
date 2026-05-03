@@ -2,10 +2,11 @@ from pathlib import Path
 import shutil
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
+from fastapi.requests import Request
 from contextlib import asynccontextmanager
 
-from app.database import init_db
+from app.database import init_db, list_profiles
 from app.version import VERSION_INFO
 from app.routers import cost_centers, expenses, reports, categories
 from app.receipt_paths import build_receipt_relative_path, get_db_folder_name
@@ -184,9 +185,23 @@ def get_version():
 
 @app.middleware("http")
 async def add_version_to_context(request, call_next):
-    """Make version available to all template responses."""
     request.state.version = VERSION_INFO
+    from app.database import _sanitize_profile_name
+    request.state.profile = _sanitize_profile_name(request.cookies.get("db_profile", "default"))
+    request.state.profiles = list_profiles()
     response = await call_next(request)
+    return response
+
+
+@app.post("/switch-profile")
+async def switch_profile(request: Request):
+    form = await request.form()
+    profile = (form.get("profile") or "default").strip()
+    from app.database import _sanitize_profile_name
+    profile = _sanitize_profile_name(profile)
+    referer = request.headers.get("referer", "/expenses/")
+    response = Response(status_code=303, headers={"location": referer})
+    response.set_cookie("db_profile", profile, max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax")
     return response
 
 
