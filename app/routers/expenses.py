@@ -289,6 +289,9 @@ def new_expense_form(
     type: Optional[str] = None,
     kind: Optional[str] = None,
     copy_from: Optional[int] = None,
+    cost_center_id: Optional[str] = None,
+    year: Optional[str] = None,
+    entry_type: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     centers = db.query(CostCenter).filter(CostCenter.active == True).order_by(CostCenter.name).all()
@@ -326,6 +329,17 @@ def new_expense_form(
 
     template_name = "expenses/mileage_form.html" if expense_mode == "mileage" else "expenses/form.html"
 
+    preset_center_id = int(cost_center_id) if cost_center_id else None
+
+    return_params = []
+    if cost_center_id:
+        return_params.append(f"cost_center_id={cost_center_id}")
+    if year:
+        return_params.append(f"year={year}")
+    if entry_type:
+        return_params.append(f"entry_type={entry_type}")
+    return_to = "/expenses/" + ("?" + "&".join(return_params) if return_params else "")
+
     return templates.TemplateResponse(
         request,
         template_name,
@@ -340,6 +354,8 @@ def new_expense_form(
             "preset_type": preset_type,
             "expense_mode": expense_mode,
             "default_mileage_rate": str(year_mileage_rate),
+            "return_to": return_to,
+            "preset_center_id": preset_center_id,
         },
     )
 
@@ -389,7 +405,9 @@ async def create_expense(request: Request, db: Session = Depends(get_db)):
     for line_data in lines:
         db.add(ExpenseLine(expense_id=expense.id, **line_data))
     db.commit()
-    return RedirectResponse("/expenses/", status_code=303)
+    return_to = (form.get("return_to") or "").strip()
+    redirect_target = return_to if return_to.startswith("/expenses/") else "/expenses/"
+    return RedirectResponse(redirect_target, status_code=303)
 
 
 @router.get("/{expense_id}/view", response_class=HTMLResponse)

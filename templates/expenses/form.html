@@ -20,6 +20,7 @@
 
       <input type="hidden" name="entry_type" value="{{ etype }}">
   <input type="hidden" name="expense_mode" value="{{ expense_mode or 'standard' }}">
+  <input type="hidden" name="return_to" value="{{ return_to or '/expenses/' }}">
 
       {# Header row #}
       <div class="row g-3 mb-3">
@@ -46,7 +47,8 @@
             <option value="{{ c.id }}"
               {% if expense and expense.cost_center_id == c.id %}selected
               {% elif prefill and prefill.cost_center_id == c.id %}selected
-              {% elif not expense and not prefill and loop.first %}selected{% endif %}>
+              {% elif not expense and not prefill and preset_center_id and preset_center_id == c.id %}selected
+              {% elif not expense and not prefill and not preset_center_id and loop.first %}selected{% endif %}>
               {{ c.name }}
             </option>
             {% endfor %}
