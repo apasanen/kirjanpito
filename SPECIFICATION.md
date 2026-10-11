@@ -151,6 +151,11 @@ Kilometrikulun summa lasketaan kaavalla `mileage_km * mileage_rate`, ja ALV on `
 
 #### GET `/expenses/{id}/edit` – Muokkaa kulua
 **Response:** 200 OK (HTML form)
+- Kuittinumeroa voi muuttaa, jos toinen tapahtuma ei vielä käytä sitä
+
+Kulunäkymä säilyttää tapahtumalistan suodattimet, jotta **Takaisin** palauttaa
+samaan kustannuspaikka-, vuosi- ja tapahtumatyyppisuodatukseen. Muokkauslomake
+säilyttää samat suodattimet tallennuksen ja peruutuksen jälkeen.
 
 #### POST `/expenses/{id}/edit` – Tallenna muokattu kulu
 Samat parametrit kuin POST /new.
@@ -161,6 +166,14 @@ Samat parametrit kuin POST /new.
 - Jos tapahtumalle on liitetty tiedosto, kuitti näytetään normaalisti.
 - Jos `no_receipt = true`, käyttöliittymä näyttää tilan **Ei kuittia**.
 - Jos tapahtuma on kulu eikä sillä ole kuittia eikä `no_receipt`-merkintää, vuosiraportti näyttää varoituksen.
+
+#### GET `/receipts/` – Kuittihaku
+- Näyttää tapahtumiin liitetyt kuitit uusimmasta alkaen
+- Suodattimet: `cost_center_id` ja `year`
+- `search_regex` hakee regexillä kuitin tunnuksesta, kuvauksesta, tiedostonimestä ja kustannuspaikasta
+- Kuittitiedoston voi avata suoraan listalta
+- Jokaiselta kuitilta on linkki sitä käyttävään tapahtumaan
+- Kuittinumeron muokkaus tapahtuu kuitin tapahtuman muokkauslomakkeella
 
 #### POST `/expenses/{id}/delete` – Poista kulu
 **Response:** 303 Redirect
@@ -233,7 +246,7 @@ CSV-tiedosto joka sisältää rivin per expense_line.
 #### GET `/reports/yearly/receipts-pdf?...` – Yhdistetty tositteiden PDF
 - Yhdistää valitun kustannuspaikan ja vuoden kaikki tositteet yhdeksi PDF:ksi
 - PDF-kuitit lisätään sivu kerrallaan
-- Kuittikuvat (JPG, PNG, WEBP) renderöidään A4-sivuille
+- Kuittikuvat (JPG, PNG, WEBP) muunnetaan ensin PDF-sivuiksi ja liitetään samaan tiedostoon
 - Jokaiselle sivulle lisätään teksti `Kuitin tunnus: YYYY-NNN`
 - Puuttuvat tai rikkoutuneet tiedostot ohitetaan, jotta lataus ei kaadu koko aineistoon
 
@@ -246,6 +259,7 @@ CSV-tiedosto joka sisältää rivin per expense_line.
 | Sivu | Polku | Kuvaus |
 |------|-------|--------|
 | Lista | `/expenses/` | Tapahtumaluettelo |
+| Kuitit | `/receipts/` | Kuitit kustannuspaikan ja vuoden suodattimilla |
 | Uusi | `/expenses/new` | Uuden tapahtuman muoto |
 | Muokkaa | `/expenses/{id}/edit` | Tapahtuman muokkaus |
 | Kategoriat | `/categories/` | Kategorialuettelo |

@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import extract
 from sqlalchemy.orm import Session
-import fitz
+import pymupdf as fitz
+from PIL import Image, ImageOps, ImageSequence
 
 from app.database import get_db
 from app.models import ApartmentYearSetting, CostCenter, Expense, ExpenseCategory, ExpenseLine, MileageYearRate
@@ -433,22 +434,29 @@ def _append_pdf_receipt(target_doc: fitz.Document, source_path: Path, reference_
 
 
 def _append_image_receipt(target_doc: fitz.Document, source_path: Path, reference_text: str):
-    # Render image onto a single A4 portrait page and stamp with the receipt id.
-    img_info = fitz.image_profile(str(source_path))
-    width = img_info.get("width", 1200)
-    height = img_info.get("height", 1600)
+    # Place each image frame on an A4 page so final PDF page size stays consistent.
+    with Image.open(source_path) as img:
+        for frame in ImageSequence.Iterator(img):
+            normalized = ImageOps.exif_transpose(frame.copy())
+            if normalized.mode not in {"RGB", "L"}:
+                normalized = normalized.convert("RGB")
 
-    page_width = fitz.paper_size("a4")[0]
-    page_height = fitz.paper_size("a4")[1]
-    page = target_doc.new_page(width=page_width, height=page_height)
+            img_buffer = io.BytesIO()
+            normalized.save(img_buffer, format="PNG")
+            png_bytes = img_buffer.getvalue()
 
-    margin = 24
-    top_reserved = 22
-    content_rect = fitz.Rect(margin, margin + top_reserved, page_width - margin, page_height - margin)
-    img_rect = fitz.Rect(0, 0, width, height)
-    placed = img_rect.torect(content_rect)
-    page.insert_image(placed, filename=str(source_path), keep_proportion=True)
-    _stamp_reference(page, reference_text)
+            page_width, page_height = fitz.paper_size("a4")
+            page = target_doc.new_page(width=page_width, height=page_height)
+            margin = 24
+            top_reserved = 22
+            content_rect = fitz.Rect(
+                margin,
+                margin + top_reserved,
+                page_width - margin,
+                page_height - margin,
+            )
+            page.insert_image(content_rect, stream=png_bytes, keep_proportion=True)
+            _stamp_reference(page, reference_text)
 
 
 @router.get("/yearly/receipts-pdf")

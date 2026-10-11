@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db, list_profiles
 from app.version import VERSION_INFO
-from app.routers import cost_centers, expenses, reports, categories
+from app.routers import cost_centers, expenses, reports, categories, receipts
 from app.receipt_paths import build_receipt_relative_path, get_db_folder_name
 from decimal import Decimal
 
@@ -169,12 +169,13 @@ app = FastAPI(title="Kirjanpito", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 Path("data/receipts").mkdir(parents=True, exist_ok=True)
-app.mount("/receipts", StaticFiles(directory="data/receipts"), name="receipts")
 
 app.include_router(cost_centers.router)
 app.include_router(expenses.router)
 app.include_router(reports.router)
 app.include_router(categories.router)
+app.include_router(receipts.router)
+app.mount("/receipts", StaticFiles(directory="data/receipts"), name="receipts")
 
 
 @app.get("/api/version")

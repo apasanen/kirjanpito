@@ -21,12 +21,25 @@
       <input type="hidden" name="entry_type" value="{{ etype }}">
   <input type="hidden" name="expense_mode" value="{{ expense_mode or 'standard' }}">
   <input type="hidden" name="return_to" value="{{ return_to or '/expenses/' }}">
+      {% if reference_error %}
+      <div class="alert alert-danger" role="alert">
+        {% if reference_error == "taken" %}Kuittinumero on jo käytössä. Valitse toinen numero.
+        {% elif reference_error == "empty" %}Kuittinumero ei voi olla tyhjä.{% endif %}
+      </div>
+      {% endif %}
 
       {# Header row #}
       <div class="row g-3 mb-3">
         <div class="col-12 d-flex align-items-center gap-3">
           {% if expense and expense.reference %}
             <span class="badge bg-dark font-monospace fs-6">{{ expense.reference }}</span>
+          {% endif %}
+          {% if expense and not read_only %}
+            <div class="d-flex align-items-center gap-2">
+              <label for="expense-reference" class="form-label mb-0">Kuittinumero</label>
+              <input id="expense-reference" type="text" name="reference" class="form-control form-control-sm font-monospace"
+                     maxlength="20" required value="{{ expense.reference or '' }}" style="width: 10rem">
+            </div>
           {% endif %}
           {% if etype == "income" %}
             <span class="badge bg-success fs-6"><i class="bi bi-arrow-down-circle me-1"></i>Tulo</span>
@@ -175,7 +188,7 @@
       </div>
 
       <div class="mt-4 d-flex gap-2 justify-content-end">
-        <a href="/expenses/" class="btn btn-outline-secondary">{{ "Takaisin" if read_only else "Peruuta" }}</a>
+        <a href="{{ return_to or '/expenses/' }}" class="btn btn-outline-secondary">{{ "Takaisin" if read_only else "Peruuta" }}</a>
         {% if not read_only %}
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-lg me-1"></i>{{ "Tallenna muutokset" if expense else ("Lisää tulo" if etype == "income" else "Lisää kulu") }}

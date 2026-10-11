@@ -8,6 +8,7 @@
     {% if selected_center %}{% set filter_qs = filter_qs ~ '&cost_center_id=' ~ selected_center %}{% endif %}
     {% if selected_year %}{% set filter_qs = filter_qs ~ '&year=' ~ selected_year %}{% endif %}
     {% if selected_type %}{% set filter_qs = filter_qs ~ '&entry_type=' ~ selected_type %}{% endif %}
+    {% set filter_url = '?' ~ filter_qs[1:] if filter_qs else '' %}
     <a href="/expenses/new?type=expense{{ filter_qs }}" class="btn btn-danger"><i class="bi bi-plus-circle me-1"></i>Uusi kulu</a>
     <a href="/expenses/new?kind=mileage{{ filter_qs }}" class="btn btn-outline-danger"><i class="bi bi-sign-turn-right me-1"></i>Lisää kilometrikulu</a>
     <a href="/expenses/new?type=income{{ filter_qs }}" class="btn btn-success"><i class="bi bi-plus-circle me-1"></i>Uusi tulo</a>
@@ -104,8 +105,8 @@
             {% endif %}
           </td>
           <td style="white-space: nowrap;">
-            <a href="/expenses/{{ exp.id }}/view" class="btn btn-sm btn-outline-info" title="Näytä"><i class="bi bi-eye"></i></a>
-            <a href="/expenses/{{ exp.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Muokkaa"><i class="bi bi-pencil"></i></a>
+            <a href="/expenses/{{ exp.id }}/view{{ filter_url }}" class="btn btn-sm btn-outline-info" title="Näytä"><i class="bi bi-eye"></i></a>
+              <a href="/expenses/{{ exp.id }}/edit{{ filter_url }}" class="btn btn-sm btn-outline-secondary" title="Muokkaa"><i class="bi bi-pencil"></i></a>
             <a href="/expenses/new?copy_from={{ exp.id }}{{ filter_qs }}" class="btn btn-sm btn-outline-primary" title="Kopioi"><i class="bi bi-copy"></i></a>
             <form method="post" action="/expenses/{{ exp.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Poistetaanko?')">

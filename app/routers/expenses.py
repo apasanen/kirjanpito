@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -28,6 +29,28 @@ DEFAULT_MILEAGE_RATE = Decimal("0.57")  # fallback when DB has no entry for the 
 def _get_mileage_rate_for_year(db: Session, year: int) -> Decimal:
     setting = db.get(MileageYearRate, year)
     return setting.rate_eur_per_km if setting else DEFAULT_MILEAGE_RATE
+
+
+def _expense_list_url(
+    cost_center_id: Optional[str] = None,
+    year: Optional[str] = None,
+    entry_type: Optional[str] = None,
+) -> str:
+    return_params = []
+    if cost_center_id:
+        return_params.append(f"cost_center_id={cost_center_id}")
+    if year:
+        return_params.append(f"year={year}")
+    if entry_type:
+        return_params.append(f"entry_type={entry_type}")
+    return "/expenses/" + ("?" + "&".join(return_params) if return_params else "")
+
+
+def _edit_expense_error_url(expense_id: int, return_to: str, error: str) -> str:
+    params = [("reference_error", error)]
+    if return_to.startswith(("/expenses/", "/receipts/")):
+        params.append(("return_to", return_to))
+    return f"/expenses/{expense_id}/edit?{urlencode(params)}"
 
 
 def _generate_reference(db: Session, year: int) -> str:
@@ -331,14 +354,7 @@ def new_expense_form(
 
     preset_center_id = int(cost_center_id) if cost_center_id else None
 
-    return_params = []
-    if cost_center_id:
-        return_params.append(f"cost_center_id={cost_center_id}")
-    if year:
-        return_params.append(f"year={year}")
-    if entry_type:
-        return_params.append(f"entry_type={entry_type}")
-    return_to = "/expenses/" + ("?" + "&".join(return_params) if return_params else "")
+    return_to = _expense_list_url(cost_center_id, year, entry_type)
 
     return templates.TemplateResponse(
         request,
@@ -411,7 +427,14 @@ async def create_expense(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/{expense_id}/view", response_class=HTMLResponse)
-def view_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
+def view_expense(
+    expense_id: int,
+    request: Request,
+    cost_center_id: Optional[str] = None,
+    year: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
         return RedirectResponse("/expenses/", status_code=303)
@@ -436,12 +459,22 @@ def view_expense(expense_id: int, request: Request, db: Session = Depends(get_db
             "read_only": True,
             "expense_mode": expense_mode,
             "default_mileage_rate": str(DEFAULT_MILEAGE_RATE),
+            "return_to": _expense_list_url(cost_center_id, year, entry_type),
         },
     )
 
 
 @router.get("/{expense_id}/edit", response_class=HTMLResponse)
-def edit_expense_form(expense_id: int, request: Request, db: Session = Depends(get_db)):
+def edit_expense_form(
+    expense_id: int,
+    request: Request,
+    cost_center_id: Optional[str] = None,
+    year: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    reference_error: Optional[str] = None,
+    return_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
         return RedirectResponse("/expenses/", status_code=303)
@@ -465,6 +498,12 @@ def edit_expense_form(expense_id: int, request: Request, db: Session = Depends(g
             "categories": categories,
             "expense_mode": expense_mode,
             "default_mileage_rate": str(DEFAULT_MILEAGE_RATE),
+            "return_to": (
+                return_to
+                if return_to and return_to.startswith(("/expenses/", "/receipts/"))
+                else _expense_list_url(cost_center_id, year, entry_type)
+            ),
+            "reference_error": reference_error,
         },
     )
 
@@ -475,6 +514,23 @@ async def update_expense(expense_id: int, request: Request, db: Session = Depend
     if not expense:
         return RedirectResponse("/expenses/", status_code=303)
     form = await request.form()
+    return_to = (form.get("return_to") or "").strip()
+    if "reference" in form:
+        new_reference = (form.get("reference") or "").strip()
+        if not new_reference:
+            return RedirectResponse(
+                _edit_expense_error_url(expense_id, return_to, "empty"), status_code=303
+            )
+        conflicting_expense = db.query(Expense.id).filter(
+            Expense.reference == new_reference,
+            Expense.id != expense.id,
+        ).first()
+        if conflicting_expense:
+            return RedirectResponse(
+                _edit_expense_error_url(expense_id, return_to, "taken"), status_code=303
+            )
+        expense.reference = new_reference
+
     expense_mode = form.get("expense_mode", "mileage" if expense.is_mileage else "standard")
     try:
         expense.cost_center_id = int(form.get("cost_center_id", expense.cost_center_id))
@@ -507,7 +563,12 @@ async def update_expense(expense_id: int, request: Request, db: Session = Depend
         for line_data in lines:
             db.add(ExpenseLine(expense_id=expense.id, **line_data))
     db.commit()
-    return RedirectResponse("/expenses/", status_code=303)
+    redirect_target = (
+        return_to
+        if return_to.startswith(("/expenses/", "/receipts/"))
+        else "/expenses/"
+    )
+    return RedirectResponse(redirect_target, status_code=303)
 
 
 @router.post("/{expense_id}/delete")

@@ -4,7 +4,10 @@ Tests for FastAPI endpoints.
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
+import pymupdf as fitz
+from PIL import Image
 from app.models import CostCenter, ExpenseCategory, Expense, ExpenseLine
 
 
@@ -33,6 +36,195 @@ class TestExpensesAPI:
         """Test GET /expenses/"""
         response = client.get("/expenses/")
         assert response.status_code == 200
+
+    def test_view_expense_preserves_cost_center_filter(self, client, api_db_session):
+        db = api_db_session
+        center = db.query(CostCenter).first()
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 4, 26),
+            entry_type="expense",
+            description="Filtered expense",
+        )
+        db.add(expense)
+        db.commit()
+
+        listing = client.get("/expenses/", params={"cost_center_id": center.id})
+        assert f'/expenses/{expense.id}/view?cost_center_id={center.id}' in listing.text
+
+        view = client.get(f"/expenses/{expense.id}/view", params={"cost_center_id": center.id})
+        assert view.status_code == 200
+        assert f'href="/expenses/?cost_center_id={center.id}"' in view.text
+
+    def test_update_expense_preserves_cost_center_filter(self, client, api_db_session):
+        db = api_db_session
+        center = db.query(CostCenter).first()
+        category = db.query(ExpenseCategory).filter_by(category_type="expense").first()
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 4, 26),
+            entry_type="expense",
+            description="Expense to update",
+        )
+        db.add(expense)
+        db.commit()
+
+        listing = client.get("/expenses/", params={"cost_center_id": center.id})
+        assert f'/expenses/{expense.id}/edit?cost_center_id={center.id}' in listing.text
+
+        edit = client.get(f"/expenses/{expense.id}/edit", params={"cost_center_id": center.id})
+        assert f'name="return_to" value="/expenses/?cost_center_id={center.id}"' in edit.text
+
+        response = client.post(
+            f"/expenses/{expense.id}/edit",
+            data={
+                "cost_center_id": str(center.id),
+                "expense_date": "2026-04-26",
+                "description": "Updated expense",
+                "entry_type": "expense",
+                "expense_mode": "standard",
+                "line_category_id": str(category.id),
+                "line_description": "Updated line",
+                "line_gross_amount": "100",
+                "line_vat_rate": "24",
+                "return_to": f"/expenses/?cost_center_id={center.id}",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == f"/expenses/?cost_center_id={center.id}"
+
+    def test_receipt_list_filters_by_cost_center_and_year(self, client, api_db_session):
+        db = api_db_session
+        first_center = db.query(CostCenter).first()
+        second_center = CostCenter(name="Second Receipt Center", type="other")
+        db.add(second_center)
+        db.flush()
+        expenses = [
+            Expense(
+                cost_center_id=first_center.id,
+                date=date(2025, 4, 10),
+                entry_type="expense",
+                description="Old receipt",
+                receipt_image_path="accounting/2025/old.pdf",
+            ),
+            Expense(
+                cost_center_id=first_center.id,
+                date=date(2026, 4, 10),
+                entry_type="expense",
+                description="Selected receipt",
+                receipt_image_path="accounting/2026/selected.pdf",
+            ),
+            Expense(
+                cost_center_id=second_center.id,
+                date=date(2026, 4, 10),
+                entry_type="expense",
+                description="Other center receipt",
+                receipt_image_path="accounting/2026/other.pdf",
+            ),
+            Expense(
+                cost_center_id=first_center.id,
+                date=date(2026, 4, 10),
+                entry_type="expense",
+                description="No receipt",
+            ),
+        ]
+        db.add_all(expenses)
+        db.commit()
+
+        response = client.get(
+            "/receipts/",
+            params={"cost_center_id": first_center.id, "year": 2026},
+        )
+
+        assert response.status_code == 200
+        assert "Selected receipt" in response.text
+        assert "Old receipt" not in response.text
+        assert "Other center receipt" not in response.text
+        assert "No receipt" not in response.text
+        assert "/receipts/accounting/2026/selected.pdf" in response.text
+        assert (
+            f"/expenses/{expenses[1].id}/edit?return_to=%2Freceipts%2F%3Fcost_center_id%3D"
+            f"{first_center.id}%26year%3D2026"
+        ) in response.text
+        assert (
+            f'href="/expenses/{expenses[1].id}/view" '
+            'class="btn btn-sm btn-outline-info" title="Näytä"'
+        ) in response.text
+        assert (
+            f'href="/expenses/{expenses[1].id}/edit?return_to=%2Freceipts%2F%3Fcost_center_id%3D'
+            f'{first_center.id}%26year%3D2026" '
+            'class="btn btn-sm btn-outline-secondary" title="Muokkaa"'
+        ) in response.text
+        assert "Avaa kulu" not in response.text
+
+        regex_response = client.get("/receipts/", params={"search_regex": "^Selected.*receipt$"})
+        assert regex_response.status_code == 200
+        assert "Selected receipt" in regex_response.text
+        assert "Old receipt" not in regex_response.text
+        assert "Other center receipt" not in regex_response.text
+
+        invalid_regex_response = client.get("/receipts/", params={"search_regex": "["})
+        assert invalid_regex_response.status_code == 200
+        assert "Virheellinen regex" in invalid_regex_response.text
+        assert "Selected receipt" not in invalid_regex_response.text
+
+    def test_expense_reference_can_change_only_to_unused_value(self, client, api_db_session):
+        db = api_db_session
+        center = db.query(CostCenter).first()
+        first_expense = Expense(
+            reference="2026-001",
+            cost_center_id=center.id,
+            date=date(2026, 4, 10),
+            entry_type="expense",
+            description="First expense",
+        )
+        second_expense = Expense(
+            reference="2026-002",
+            cost_center_id=center.id,
+            date=date(2026, 4, 11),
+            entry_type="expense",
+            description="Second expense",
+        )
+        db.add_all([first_expense, second_expense])
+        db.commit()
+
+        edit = client.get(f"/expenses/{first_expense.id}/edit")
+        assert 'name="reference"' in edit.text
+        assert 'value="2026-001"' in edit.text
+
+        form_data = {
+            "reference": "2026-003",
+            "cost_center_id": str(center.id),
+            "expense_date": "2026-04-10",
+            "description": "Changed reference",
+            "entry_type": "expense",
+            "expense_mode": "standard",
+            "return_to": f"/expenses/?cost_center_id={center.id}",
+        }
+        success = client.post(
+            f"/expenses/{first_expense.id}/edit",
+            data=form_data,
+            follow_redirects=False,
+        )
+        assert success.status_code == 303
+        assert success.headers["location"] == f"/expenses/?cost_center_id={center.id}"
+        db.refresh(first_expense)
+        assert first_expense.reference == "2026-003"
+
+        form_data["reference"] = "2026-002"
+        form_data["description"] = "Must not be saved"
+        conflict = client.post(
+            f"/expenses/{first_expense.id}/edit",
+            data=form_data,
+            follow_redirects=False,
+        )
+        assert conflict.status_code == 303
+        assert conflict.headers["location"].startswith(f"/expenses/{first_expense.id}/edit?")
+        db.refresh(first_expense)
+        assert first_expense.reference == "2026-003"
+        assert first_expense.description == "Changed reference"
+        assert "reference_error=taken" in conflict.headers["location"]
     
     def test_create_simple_expense(self, client, api_db_session):
         """Test creating a single-line expense."""
@@ -397,4 +589,74 @@ class TestReportsAPI:
         assert "Ajopäiväkirja" in response.text
         assert "Huoltokäynti" in response.text
         assert "Oma auto" in response.text
+
+    def test_yearly_receipts_pdf_includes_image_receipt_with_reference(
+        self,
+        client,
+        api_db_session,
+        monkeypatch,
+        tmp_path,
+    ):
+        """Receipts PDF bundles image receipts and stamps receipt identifier text."""
+        db = api_db_session
+
+        from app import receipt_paths
+
+        monkeypatch.setattr(receipt_paths, "RECEIPTS_ROOT", tmp_path)
+
+        center = CostCenter(name="Receipt PDF Center", type="apartment", vat_deductible=True)
+        category = ExpenseCategory(name="Receipt PDF Category", category_type="expense")
+        db.add_all([center, category])
+        db.flush()
+
+        rel_path = "test/2026/kuitti.png"
+        abs_path = Path(tmp_path) / rel_path
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (800, 600), color="white").save(abs_path)
+
+        expense = Expense(
+            cost_center_id=center.id,
+            date=date(2026, 6, 1),
+            reference="2026-901",
+            entry_type="expense",
+            receipt_image_path=rel_path,
+        )
+        db.add(expense)
+        db.flush()
+        db.add(ExpenseLine(
+            expense_id=expense.id,
+            category_id=category.id,
+            description="Receipt row",
+            gross_amount=Decimal("42.00"),
+            vat_rate=Decimal("0"),
+            vat_amount=Decimal("0.00"),
+            net_amount=Decimal("42.00"),
+        ))
+        db.commit()
+
+        response = client.get(
+            "/reports/yearly/receipts-pdf",
+            params={"cost_center_id": center.id, "year": 2026},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/pdf")
+
+        doc = fitz.open(stream=response.content, filetype="pdf")
+        try:
+            assert doc.page_count == 1
+            page = doc[0]
+            text = page.get_text()
+            assert "Kuitin tunnus: 2026-901" in text
+
+            images = page.get_images(full=True)
+            assert images
+            xref = images[0][0]
+            rects = page.get_image_rects(xref)
+            assert rects
+            # Image should occupy a meaningful area of the A4 page, not appear tiny.
+            fill_ratio = rects[0].get_area() / page.rect.get_area()
+            assert fill_ratio > 0.30
+        finally:
+            doc.close()
 

@@ -32,7 +32,7 @@ import argparse
 
 def _compress_pdf_page(doc, page_num, dpi=85, quality=20):
     """Compress a single PDF page by rasterizing to grayscale JPEG (configurable DPI and quality)."""
-    import fitz
+    import pymupdf as fitz
     
     page = doc[page_num]
     
@@ -51,7 +51,7 @@ def _compress_pdf_page(doc, page_num, dpi=85, quality=20):
 def split_pdf(pdf_path, output_dir=None, dpi=85, quality=20):
     """Split a multi-page PDF into individual per-page PDF files with compression."""
     try:
-        import fitz  # PyMuPDF
+        import pymupdf as fitz  # PyMuPDF
     except ImportError:
         print("ERROR: PyMuPDF not installed. Install with: pip install pymupdf")
         return False

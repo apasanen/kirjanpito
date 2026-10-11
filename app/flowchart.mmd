@@ -1,0 +1,36 @@
+flowchart TB
+
+    %% Virtalähteet
+    PV["Aurinkopaneelit"]
+    BAT["48 V Akku"]
+
+    %% Pääpiiri
+    BAT --> F1["MEGA 125 A"]
+    F1 --> SW["Battery Switch"]
+    SW --> BUSP["Plusjakokisko"]
+
+    BAT --> SHUNT["SmartShunt (varaus)"]
+    SHUNT --> BUSN["Miinusjakokisko"]
+
+    %% MPPT
+    PV --> PVSW["PV-katkaisin"]
+    PVSW --> MPPT["Victron MPPT 150/45"]
+
+    BUSP --> MIDI["MIDI 63 A"]
+    MIDI --> MPPT
+
+    MPPT --> BUSN
+
+    %% Rakennus 1
+    BUSP --> CB1["MCB 16 A Rakennus 1"]
+    CB1 --> B1P["Rakennus 1 +"]
+    BUSN --> B1N["Rakennus 1 -"]
+
+    %% Rakennus 2
+    BUSP --> CB2["MCB 16 A Rakennus 2"]
+    CB2 --> B2P["Rakennus 2 +"]
+    BUSN --> B2N["Rakennus 2 -"]
+
+    %% Tuleva invertteri
+    BUSP --> INVP["Invertteri + (varaus)"]
+    BUSN --> INVN["Invertteri - (varaus)"]
